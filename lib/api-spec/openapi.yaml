@@ -1,22 +1,29 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Katsina State Child Verification Platform API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: verification
+    description: Face + ear verification operations
+  - name: children
+    description: Child registry operations
+  - name: verifications
+    description: Verification log and review queue
+  - name: admin
+    description: Admin and stats operations
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +31,235 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /verify:
+    post:
+      operationId: verifyChild
+      tags: [verification]
+      summary: Verify a child against the database
+      description: Submit face and ear images to check if the child is already registered. Returns a result tier - match, new, or needs human review.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerificationInput"
+      responses:
+        "200":
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationResult"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Face service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /children:
+    get:
+      operationId: listChildren
+      tags: [children]
+      summary: List registered children
+      parameters:
+        - name: lga
+          in: query
+          schema:
+            type: string
+        - name: village
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          description: Search by name
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of children
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChildrenList"
+
+    post:
+      operationId: registerChild
+      tags: [children]
+      summary: Register a new child
+      description: Register a new child with face and ear biometric images and personal information.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChildInput"
+      responses:
+        "201":
+          description: Child registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Child"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /children/{id}:
+    get:
+      operationId: getChild
+      tags: [children]
+      summary: Get a single child record
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Child record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Child"
+        "404":
+          description: Child not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /verifications:
+    get:
+      operationId: listVerifications
+      tags: [verifications]
+      summary: List verification events
+      parameters:
+        - name: review_status
+          in: query
+          schema:
+            type: string
+            enum: [clear, needs_review, confirmed_match, confirmed_new]
+        - name: lga
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of verification events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationList"
+
+  /verifications/review-queue:
+    get:
+      operationId: getReviewQueue
+      tags: [verifications]
+      summary: Get verifications pending supervisor review
+      responses:
+        "200":
+          description: List of verifications needing review
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReviewQueueItem"
+
+  /verifications/{id}/review:
+    patch:
+      operationId: submitReview
+      tags: [verifications]
+      summary: Submit supervisor review decision
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewDecision"
+      responses:
+        "200":
+          description: Review submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Verification"
+        "404":
+          description: Verification not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /stats:
+    get:
+      operationId: getStats
+      tags: [admin]
+      summary: Get dashboard statistics
+      responses:
+        "200":
+          description: Platform statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Stats"
+
+  /lgas:
+    get:
+      operationId: listLgas
+      tags: [admin]
+      summary: List all LGAs in Katsina State
+      responses:
+        "200":
+          description: List of LGAs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LgaInfo"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +270,267 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    Child:
+      type: object
+      properties:
+        id:
+          type: integer
+        first_name:
+          type: string
+        surname:
+          type: string
+        guardian_name:
+          type: string
+        date_of_birth:
+          type: string
+        lga:
+          type: string
+        village:
+          type: string
+        visible_marks:
+          type: ["string", "null"]
+        gps_lat:
+          type: ["number", "null"]
+        gps_lng:
+          type: ["number", "null"]
+        face_photo:
+          type: ["string", "null"]
+          description: Base64-encoded face thumbnail for display
+        created_at:
+          type: string
+        verification_count:
+          type: integer
+      required:
+        - id
+        - first_name
+        - surname
+        - guardian_name
+        - date_of_birth
+        - lga
+        - village
+        - created_at
+        - verification_count
+
+    ChildInput:
+      type: object
+      properties:
+        first_name:
+          type: string
+          minLength: 1
+        surname:
+          type: string
+          minLength: 1
+        guardian_name:
+          type: string
+          minLength: 1
+        date_of_birth:
+          type: string
+          description: ISO date string YYYY-MM-DD
+        lga:
+          type: string
+          minLength: 1
+        village:
+          type: string
+          minLength: 1
+        visible_marks:
+          type: ["string", "null"]
+        gps_lat:
+          type: ["number", "null"]
+        gps_lng:
+          type: ["number", "null"]
+        face_images:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 3
+          description: Base64-encoded face images (1-3 frontal shots)
+        ear_images:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 3
+          description: Base64-encoded ear/profile images (1-3 shots)
+      required:
+        - first_name
+        - surname
+        - guardian_name
+        - date_of_birth
+        - lga
+        - village
+        - face_images
+        - ear_images
+
+    ChildrenList:
+      type: object
+      properties:
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/Child"
+        total:
+          type: integer
+      required:
+        - children
+        - total
+
+    VerificationInput:
+      type: object
+      properties:
+        face_image:
+          type: string
+          description: Base64-encoded frontal face image
+        ear_image:
+          type: string
+          description: Base64-encoded profile/ear image
+        gps_lat:
+          type: ["number", "null"]
+        gps_lng:
+          type: ["number", "null"]
+      required:
+        - face_image
+        - ear_image
+
+    VerificationResult:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [new, match, review]
+          description: "new = first visit, match = already verified, review = needs supervisor"
+        confidence:
+          type: ["number", "null"]
+          description: Fused match confidence score 0-1
+        child:
+          description: Matched child record (null if new)
+          oneOf:
+            - $ref: "#/components/schemas/Child"
+            - type: "null"
+        verification_id:
+          type: ["integer", "null"]
+      required:
+        - status
+
+    Verification:
+      type: object
+      properties:
+        id:
+          type: integer
+        child_id:
+          type: ["integer", "null"]
+        verified_at:
+          type: string
+        gps_lat:
+          type: ["number", "null"]
+        gps_lng:
+          type: ["number", "null"]
+        face_score:
+          type: ["number", "null"]
+        ear_score:
+          type: ["number", "null"]
+        fused_score:
+          type: ["number", "null"]
+        review_status:
+          type: string
+          enum: [clear, needs_review, confirmed_match, confirmed_new]
+        child:
+          oneOf:
+            - $ref: "#/components/schemas/Child"
+            - type: "null"
+      required:
+        - id
+        - verified_at
+        - review_status
+
+    VerificationList:
+      type: object
+      properties:
+        verifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/Verification"
+        total:
+          type: integer
+      required:
+        - verifications
+        - total
+
+    ReviewQueueItem:
+      type: object
+      properties:
+        verification_id:
+          type: integer
+        verified_at:
+          type: string
+        gps_lat:
+          type: ["number", "null"]
+        gps_lng:
+          type: ["number", "null"]
+        face_score:
+          type: ["number", "null"]
+        ear_score:
+          type: ["number", "null"]
+        fused_score:
+          type: ["number", "null"]
+        capture_photo:
+          type: ["string", "null"]
+          description: Base64 photo captured during this verification attempt
+        candidate_child:
+          description: The child that was a potential match
+          oneOf:
+            - $ref: "#/components/schemas/Child"
+            - type: "null"
+      required:
+        - verification_id
+        - verified_at
+
+    ReviewDecision:
+      type: object
+      properties:
+        decision:
+          type: string
+          enum: [confirmed_match, confirmed_new]
+      required:
+        - decision
+
+    Stats:
+      type: object
+      properties:
+        total_children:
+          type: integer
+        verifications_today:
+          type: integer
+        verifications_this_week:
+          type: integer
+        pending_reviews:
+          type: integer
+        verifications_by_lga:
+          type: object
+          additionalProperties:
+            type: integer
+      required:
+        - total_children
+        - verifications_today
+        - verifications_this_week
+        - pending_reviews
+        - verifications_by_lga
+
+    LgaInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+      required:
+        - name
+        - code

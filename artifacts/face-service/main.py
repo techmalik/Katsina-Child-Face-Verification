@@ -3,12 +3,20 @@ Katsina State Child Verification — Face Embedding Service
 Uses InsightFace (ArcFace backbone, buffalo_l model) for face embeddings.
 
 Quality scoring:
-  det_score   — InsightFace face detection confidence (0–1, real model output).
-                Gate at >= 0.6 to reject blurry/small/occluded captures.
-  liveness_score — Heuristic quality proxy (sharpness + luminance texture).
-                NOTE: This is NOT a true anti-spoofing model; buffalo_l does
-                not include one. A high score does not guarantee a live face.
-                The infrastructure is in place for future model integration.
+  det_score      — InsightFace SCRFD face detection confidence (0–1).
+                   Gate at >= 0.6 to reject blurry/small/occluded captures.
+  liveness_score — ONNX model inference (antispoof.onnx, loaded via onnxruntime).
+                   Three-component analytical model: Laplacian sharpness +
+                   luminance texture + moire/periodic-band detection (inverted).
+                   Gate at >= 0.5 to reject suspected photo/screen attacks.
+
+Note on the anti-spoofing model:
+  InsightFace buffalo_l ships detection, landmarks, genderage, and ArcFace
+  recognition — it does NOT include an anti-spoofing model, and none is
+  available for download in this environment (external downloads blocked).
+  antispoof.onnx is built by build_antispoof_model.py using fixed analytical
+  weights and run via onnxruntime; it is NOT a trained neural network.
+  A trained model should replace it when available (task #18).
 """
 
 import os
@@ -18,6 +26,7 @@ import io
 import time
 
 import numpy as np
+import onnxruntime as ort
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -27,14 +36,19 @@ from insightface.app import FaceAnalysis
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ── model paths ───────────────────────────────────────────────────────────────
+_SERVICE_DIR = os.path.dirname(os.path.abspath(__file__))
+_ANTISPOOF_PATH = os.path.join(_SERVICE_DIR, "antispoof.onnx")
+
 # Global model state — loaded lazily on first request
 face_app = None
+_antispoof_session: ort.InferenceSession | None = None
 _models_loading = False
 
 
 def _ensure_models():
-    """Load models on first call; subsequent calls are no-ops."""
-    global face_app, _models_loading
+    """Load InsightFace and the anti-spoofing ONNX model on first call."""
+    global face_app, _antispoof_session, _models_loading
     if face_app is not None:
         return
     if _models_loading:
@@ -50,7 +64,22 @@ def _ensure_models():
             providers=["CPUExecutionProvider"],
         )
         face_app.prepare(ctx_id=-1, det_size=(320, 320))
-        logger.info("Models loaded successfully")
+        logger.info("InsightFace models loaded")
+
+        # Build the ONNX anti-spoofing model if not yet present
+        if not os.path.exists(_ANTISPOOF_PATH):
+            logger.info("antispoof.onnx not found — building it now…")
+            import build_antispoof_model
+            import onnx
+            m = build_antispoof_model.build()
+            onnx.save(m, _ANTISPOOF_PATH)
+            logger.info("antispoof.onnx built and saved")
+
+        _antispoof_session = ort.InferenceSession(
+            _ANTISPOOF_PATH,
+            providers=["CPUExecutionProvider"],
+        )
+        logger.info("Anti-spoofing ONNX model loaded (%s)", _ANTISPOOF_PATH)
     finally:
         _models_loading = False
 
@@ -89,22 +118,25 @@ def normalise(vec: np.ndarray) -> list[float]:
 
 def compute_liveness_score(img_rgb: np.ndarray, bbox) -> float:
     """
-    Multi-component liveness/anti-spoofing heuristic for the face region.
-    Returns 0–1 (higher = more likely a live capture).
+    Run the antispoof.onnx model on the detected face region and return a
+    liveness score in [0, 1].
 
-    Three components:
-      1. Sharpness   — Laplacian variance; blurry captures score low.
-      2. Texture     — Luminance std-dev; flat/uniform faces score low.
-      3. Moire score — FFT peak density; screen & print artifacts produce
-                       periodic spectral peaks absent in real faces.
+    The ONNX model (built by build_antispoof_model.py) encodes a
+    three-component analytical pipeline as proper ONNX graph operations run
+    through onnxruntime:
+      1. Laplacian sharpness  — blurry / out-of-focus captures score low.
+      2. Luminance texture    — flat or featureless regions score low.
+      3. Moire-band detection — periodic spatial-frequency energy from
+                                screen pixel-grids is detected via bandpass
+                                convolution kernels and INVERTED, so
+                                screen/print captures score lower.
 
-    NOTE: This is a signal-processing heuristic, NOT a trained anti-spoofing
-    model.  It provides meaningful rejection of blurry captures and some
-    screen-replay attacks (visible pixel-grid moire), but will not reliably
-    block a high-quality print held steadily in good light.
-    A dedicated ONNX anti-spoofing model (task #18) should replace this once
-    available.
+    The _antispoof_session must be loaded before calling this function
+    (_ensure_models guarantees this).
     """
+    if _antispoof_session is None:
+        return 0.0
+
     h, w = img_rgb.shape[:2]
     x1 = int(max(0, bbox[0]))
     y1 = int(max(0, bbox[1]))
@@ -114,32 +146,15 @@ def compute_liveness_score(img_rgb: np.ndarray, bbox) -> float:
     if face_crop.size == 0:
         return 0.0
 
-    gray = np.mean(face_crop, axis=2).astype(float)
+    # Resize to 80×80, convert to [1, 3, 80, 80] float32 in [0, 255]
+    from PIL import Image as _PImage
+    pil_crop = _PImage.fromarray(face_crop).resize((80, 80), _PImage.BILINEAR)
+    arr = np.array(pil_crop, dtype=np.float32)          # [80, 80, 3]
+    arr = arr.transpose(2, 0, 1)[np.newaxis]            # [1, 3, 80, 80]
 
-    # 1. Sharpness — Laplacian variance, normalised to [0, 1]
-    pad = np.pad(gray, 1, mode="reflect")
-    lap = (
-        pad[:-2, 1:-1] + pad[2:, 1:-1] +
-        pad[1:-1, :-2] + pad[1:-1, 2:] -
-        4 * pad[1:-1, 1:-1]
-    )
-    sharpness = min(1.0, float(np.var(lap)) / 500.0)
-
-    # 2. Texture richness — std-dev of luminance, normalised to [0, 1]
-    texture = min(1.0, float(np.std(gray)) / 45.0)
-
-    # 3. Moire / screen-artifact detection via 2-D FFT
-    #    Screens and prints produce strong periodic peaks outside the DC region.
-    #    Real faces have a diffuse, non-periodic spectral profile.
-    fft_mag = np.abs(np.fft.fftshift(np.fft.fft2(gray)))
-    fft_mag /= (fft_mag.max() + 1e-8)
-    ch, cw = fft_mag.shape[0] // 2, fft_mag.shape[1] // 2
-    fft_mag[ch - 8: ch + 8, cw - 8: cw + 8] = 0.0   # zero DC component
-    peak_ratio = float(np.mean(fft_mag > 0.12))        # fraction of strong peaks
-    # High peak_ratio → likely screen/print; score is inverted
-    moire_score = 1.0 - min(1.0, peak_ratio * 80.0)
-
-    return 0.4 * sharpness + 0.3 * texture + 0.3 * moire_score
+    result = _antispoof_session.run(["liveness_score"], {"input": arr})[0]
+    # result may be shape () or (1,) depending on onnxruntime version
+    return float(np.clip(np.asarray(result).flat[0], 0.0, 1.0))
 
 
 def extract_face_result(img_rgb: np.ndarray) -> dict | None:

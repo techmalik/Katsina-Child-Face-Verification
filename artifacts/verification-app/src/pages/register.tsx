@@ -141,6 +141,16 @@ export function Register() {
     );
   };
 
+  const onInvalid = () => {
+    const firstError = document.querySelector<HTMLElement>("[data-invalid]");
+    if (firstError) {
+      firstError.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    toast.error("Please fill in all required fields before submitting.");
+  };
+
   const onSubmit = (data: FormValues) => {
     if (faceImages.length === 0) {
       toast.error("Face photo is required");
@@ -550,7 +560,7 @@ export function Register() {
         </div>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+          <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <FormField
                 control={form.control}

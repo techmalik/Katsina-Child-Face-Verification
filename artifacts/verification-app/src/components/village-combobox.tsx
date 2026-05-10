@@ -46,6 +46,7 @@ export function VillageCombobox({ value, lga, onChange, disabled }: VillageCombo
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          type="button"
           variant="outline"
           role="combobox"
           aria-expanded={open}

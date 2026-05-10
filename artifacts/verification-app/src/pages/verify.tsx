@@ -46,19 +46,14 @@ export function Verify() {
   };
 
   if (step === "quality_error") {
-    const isLiveness = qualityError?.includes("Live person");
     return (
       <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-6 text-center">
         <div className="w-full max-w-sm space-y-5">
-          <div className={`rounded-xl p-5 flex items-center gap-3 text-white shadow ${isLiveness ? "bg-red-700" : "bg-orange-600"}`}>
+          <div className="rounded-xl p-5 flex items-center gap-3 text-white shadow bg-orange-600">
             <AlertTriangle className="w-10 h-10 shrink-0" />
             <div className="text-left">
-              <p className="font-black text-xl leading-tight">
-                {isLiveness ? "Live Person Required" : "Photo Quality Too Low"}
-              </p>
-              <p className="text-white/80 text-sm mt-0.5">
-                {isLiveness ? "Do not use a photograph or screen" : "Retake in better conditions"}
-              </p>
+              <p className="font-black text-xl leading-tight">Photo Quality Too Low</p>
+              <p className="text-white/80 text-sm mt-0.5">Retake in better conditions</p>
             </div>
           </div>
 
@@ -77,25 +72,14 @@ export function Verify() {
             <p className="text-white font-bold text-base">{qualityError}</p>
           </div>
 
-          {isLiveness ? (
-            <div className="bg-amber-900/40 border border-amber-500/40 rounded-xl p-4 text-left space-y-1">
-              <p className="text-amber-300 font-bold text-sm mb-1">Tips:</p>
-              <ul className="text-amber-200 text-sm space-y-1 list-disc list-inside">
-                <li>Hold the device in front of the actual person</li>
-                <li>Do not photograph a photo, ID card, or phone screen</li>
-                <li>Ensure the face is well-lit and clearly visible</li>
-              </ul>
-            </div>
-          ) : (
-            <div className="bg-amber-900/40 border border-amber-500/40 rounded-xl p-4 text-left space-y-1">
-              <p className="text-amber-300 font-bold text-sm mb-1">Tips:</p>
-              <ul className="text-amber-200 text-sm space-y-1 list-disc list-inside">
-                <li>Move closer so the face fills the oval</li>
-                <li>Ensure adequate lighting — avoid shadows</li>
-                <li>Hold steady and look directly at the camera</li>
-              </ul>
-            </div>
-          )}
+          <div className="bg-amber-900/40 border border-amber-500/40 rounded-xl p-4 text-left space-y-1">
+            <p className="text-amber-300 font-bold text-sm mb-1">Tips:</p>
+            <ul className="text-amber-200 text-sm space-y-1 list-disc list-inside">
+              <li>Move closer so the face fills the oval</li>
+              <li>Ensure adequate lighting — avoid shadows</li>
+              <li>Hold steady and look directly at the camera</li>
+            </ul>
+          </div>
 
           <Button
             onClick={() => {

@@ -189,21 +189,16 @@ export function Register() {
     );
   };
 
-  /* ── Quality / liveness rejection ──────────────────────────────── */
+  /* ── Photo quality rejection ────────────────────────────────────── */
   if (step === "quality_error") {
-    const isLiveness = qualityError?.includes("Live person");
     return (
       <Layout>
         <div className="p-4 md:p-8 max-w-lg mx-auto w-full space-y-5">
           <div className="bg-red-600 text-white rounded-xl p-4 flex items-center gap-3 shadow">
             <AlertTriangle className="w-10 h-10 shrink-0" />
             <div>
-              <p className="font-black text-xl leading-tight">
-                {isLiveness ? "Live Person Required" : "Photo Quality Too Low"}
-              </p>
-              <p className="text-white/80 text-sm">
-                {isLiveness ? "Do not use a photograph or screen" : "Retake in better conditions"}
-              </p>
+              <p className="font-black text-xl leading-tight">Photo Quality Too Low</p>
+              <p className="text-white/80 text-sm">Retake in better conditions</p>
             </div>
           </div>
 
@@ -222,25 +217,14 @@ export function Register() {
             <p className="text-red-900 font-bold text-base">{qualityError}</p>
           </div>
 
-          {isLiveness ? (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-1">
-              <p className="text-amber-900 font-bold text-sm">Tips:</p>
-              <ul className="text-amber-800 text-sm space-y-1 list-disc list-inside">
-                <li>Hold the device in front of the actual person</li>
-                <li>Ensure the face is well-lit and clearly visible</li>
-                <li>Do not photograph a photo, ID card, or phone screen</li>
-              </ul>
-            </div>
-          ) : (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-1">
-              <p className="text-amber-900 font-bold text-sm">Tips:</p>
-              <ul className="text-amber-800 text-sm space-y-1 list-disc list-inside">
-                <li>Move closer so the face fills the oval</li>
-                <li>Ensure adequate lighting — avoid shadows</li>
-                <li>Hold steady and look directly at the camera</li>
-              </ul>
-            </div>
-          )}
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-1">
+            <p className="text-amber-900 font-bold text-sm">Tips:</p>
+            <ul className="text-amber-800 text-sm space-y-1 list-disc list-inside">
+              <li>Move closer so the face fills the oval</li>
+              <li>Ensure adequate lighting — avoid shadows</li>
+              <li>Hold steady and look directly at the camera</li>
+            </ul>
+          </div>
 
           <Button onClick={resetFlow} className="w-full h-16 text-xl font-bold">
             <RefreshCw className="mr-2 h-6 w-6" /> Try Again

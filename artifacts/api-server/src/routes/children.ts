@@ -6,7 +6,7 @@ const router = Router();
 const FACE_SERVICE_URL = process.env.FACE_SERVICE_URL ?? "http://localhost:8000";
 const THRESHOLD_DUPLICATE = 0.38;
 const DET_THRESHOLD = 0.6;
-const LIVENESS_THRESHOLD = 0.5;
+const QUALITY_THRESHOLD = 0.5;
 
 function vecStr(v: number[]): string {
   return `[${v.join(",")}]`;
@@ -110,20 +110,13 @@ router.post("/", async (req, res) => {
   // Only frames that pass BOTH thresholds are used for averaging and storage.
   // This prevents blurry or spoof-suspect frames from polluting stored embeddings.
   const passingFrames = validFrames.filter(
-    (f) => f.det >= DET_THRESHOLD && f.liveness >= LIVENESS_THRESHOLD,
+    (f) => f.det >= DET_THRESHOLD && f.liveness >= QUALITY_THRESHOLD,
   );
 
   if (passingFrames.length === 0) {
-    const bestByDet = validFrames.reduce((a, b) => (a.det > b.det ? a : b));
-    if (bestByDet.det < DET_THRESHOLD) {
-      return res.status(400).json({
-        error: "Photo quality too low — move closer, ensure good lighting, and hold still.",
-        error_code: "quality_low",
-      });
-    }
     return res.status(400).json({
-      error: "Live person required — please do not use a photograph.",
-      error_code: "liveness_failed",
+      error: "Photo quality too low — move closer, ensure good lighting, and hold still.",
+      error_code: "quality_low",
     });
   }
 

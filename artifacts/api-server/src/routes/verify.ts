@@ -8,7 +8,7 @@ const FACE_SERVICE_URL = process.env.FACE_SERVICE_URL ?? "http://localhost:8000"
 const THRESHOLD_MATCH = 0.55;
 const THRESHOLD_REVIEW = 0.38;
 const DET_THRESHOLD = 0.6;
-const LIVENESS_THRESHOLD = 0.3;
+const LIVENESS_THRESHOLD = 0.5;
 
 function vecStr(v: number[]): string {
   return `[${v.join(",")}]`;
@@ -73,14 +73,14 @@ router.post("/", async (req, res) => {
 
   if (bestDet < DET_THRESHOLD) {
     return res.status(400).json({
-      error:
-        "Photo quality too low — move closer, ensure good lighting, and hold still.",
+      error: "Photo quality too low — move closer, ensure good lighting, and hold still.",
+      error_code: "quality_low",
     });
   }
   if (bestLiveness < LIVENESS_THRESHOLD) {
     return res.status(400).json({
-      error:
-        "Photo quality too low — ensure the face is well-lit and in focus.",
+      error: "Live person required — please do not use a photograph.",
+      error_code: "liveness_failed",
     });
   }
 

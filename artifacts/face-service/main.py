@@ -89,12 +89,21 @@ def normalise(vec: np.ndarray) -> list[float]:
 
 def compute_liveness_score(img_rgb: np.ndarray, bbox) -> float:
     """
-    Heuristic quality/liveness proxy based on face-region sharpness and texture.
-    Returns 0–1 (higher = better quality capture).
+    Multi-component liveness/anti-spoofing heuristic for the face region.
+    Returns 0–1 (higher = more likely a live capture).
 
-    Catches blurry / under-exposed frames but cannot distinguish a live face
-    from a clear printed photo — a dedicated anti-spoofing model is needed for
-    that and can be wired in here once available.
+    Three components:
+      1. Sharpness   — Laplacian variance; blurry captures score low.
+      2. Texture     — Luminance std-dev; flat/uniform faces score low.
+      3. Moire score — FFT peak density; screen & print artifacts produce
+                       periodic spectral peaks absent in real faces.
+
+    NOTE: This is a signal-processing heuristic, NOT a trained anti-spoofing
+    model.  It provides meaningful rejection of blurry captures and some
+    screen-replay attacks (visible pixel-grid moire), but will not reliably
+    block a high-quality print held steadily in good light.
+    A dedicated ONNX anti-spoofing model (task #18) should replace this once
+    available.
     """
     h, w = img_rgb.shape[:2]
     x1 = int(max(0, bbox[0]))
@@ -107,7 +116,7 @@ def compute_liveness_score(img_rgb: np.ndarray, bbox) -> float:
 
     gray = np.mean(face_crop, axis=2).astype(float)
 
-    # Laplacian variance (sharpness) — normalised to [0, 1]
+    # 1. Sharpness — Laplacian variance, normalised to [0, 1]
     pad = np.pad(gray, 1, mode="reflect")
     lap = (
         pad[:-2, 1:-1] + pad[2:, 1:-1] +
@@ -116,10 +125,21 @@ def compute_liveness_score(img_rgb: np.ndarray, bbox) -> float:
     )
     sharpness = min(1.0, float(np.var(lap)) / 500.0)
 
-    # Luminance texture richness — normalised to [0, 1]
+    # 2. Texture richness — std-dev of luminance, normalised to [0, 1]
     texture = min(1.0, float(np.std(gray)) / 45.0)
 
-    return 0.6 * sharpness + 0.4 * texture
+    # 3. Moire / screen-artifact detection via 2-D FFT
+    #    Screens and prints produce strong periodic peaks outside the DC region.
+    #    Real faces have a diffuse, non-periodic spectral profile.
+    fft_mag = np.abs(np.fft.fftshift(np.fft.fft2(gray)))
+    fft_mag /= (fft_mag.max() + 1e-8)
+    ch, cw = fft_mag.shape[0] // 2, fft_mag.shape[1] // 2
+    fft_mag[ch - 8: ch + 8, cw - 8: cw + 8] = 0.0   # zero DC component
+    peak_ratio = float(np.mean(fft_mag > 0.12))        # fraction of strong peaks
+    # High peak_ratio → likely screen/print; score is inverted
+    moire_score = 1.0 - min(1.0, peak_ratio * 80.0)
+
+    return 0.4 * sharpness + 0.3 * texture + 0.3 * moire_score
 
 
 def extract_face_result(img_rgb: np.ndarray) -> dict | None:

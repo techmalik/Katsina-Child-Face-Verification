@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-type Step = "face" | "checking" | "exists" | "review" | "new_form" | "duplicate";
+type Step = "face" | "checking" | "exists" | "review" | "new_form" | "duplicate" | "quality_error";
 
 const formSchema = z.object({
   first_name: z.string().min(1, "First name is required"),
@@ -64,6 +64,7 @@ export function Register() {
 
   const [verifyResult, setVerifyResult] = useState<VerificationResult | null>(null);
   const [duplicateMatch, setDuplicateMatch] = useState<{ child: Child | null; confidence: number } | null>(null);
+  const [qualityError, setQualityError] = useState<string | null>(null);
   const [gpsLat, setGpsLat] = useState<number | null>(null);
   const [gpsLng, setGpsLng] = useState<number | null>(null);
   const [gpsError, setGpsError] = useState(false);
@@ -102,6 +103,7 @@ export function Register() {
     setFaceImages([]);
     setVerifyResult(null);
     setDuplicateMatch(null);
+    setQualityError(null);
     form.reset();
   };
 
@@ -124,17 +126,12 @@ export function Register() {
           else setStep("new_form");
         },
         onError: (err: unknown) => {
-          const apiErr = err as { status?: number; data?: { error?: string } };
+          const apiErr = err as { status?: number; data?: { error?: string; error_code?: string } };
           const msg = apiErr?.data?.error ?? "";
-          // Quality/liveness rejections — go back to camera with the error shown
-          if (
-            msg.includes("quality") ||
-            msg.includes("Live person") ||
-            msg.includes("No face detected")
-          ) {
-            toast.error(msg, { duration: 5000 });
-            setFaceImages([]);
-            setStep("face");
+          const code = apiErr?.data?.error_code ?? "";
+          if (code === "quality_low" || code === "liveness_failed" || msg.includes("No face detected")) {
+            setQualityError(msg);
+            setStep("quality_error");
           } else {
             // Network or other error — proceed to form so the field worker isn't blocked
             setStep("new_form");
@@ -170,7 +167,7 @@ export function Register() {
           setLocation("/registry");
         },
         onError: (err: unknown) => {
-          const apiErr = err as { status?: number; data?: { matched_child?: Child | null; confidence?: number; error?: string } };
+          const apiErr = err as { status?: number; data?: { matched_child?: Child | null; confidence?: number; error?: string; error_code?: string } };
           if (apiErr?.status === 409 && apiErr?.data) {
             setDuplicateMatch({
               child: apiErr.data.matched_child ?? null,
@@ -179,14 +176,10 @@ export function Register() {
             setStep("duplicate");
           } else {
             const msg = (apiErr?.data as { error?: string })?.error ?? "Registration failed";
-            if (
-              msg.includes("quality") ||
-              msg.includes("Live person") ||
-              msg.includes("No face detected")
-            ) {
-              toast.error(msg, { duration: 5000 });
-              setFaceImages([]);
-              setStep("face");
+            const code = (apiErr?.data as { error_code?: string })?.error_code ?? "";
+            if (code === "quality_low" || code === "liveness_failed" || msg.includes("No face detected")) {
+              setQualityError(msg);
+              setStep("quality_error");
             } else {
               toast.error(msg);
             }
@@ -195,6 +188,67 @@ export function Register() {
       }
     );
   };
+
+  /* ── Quality / liveness rejection ──────────────────────────────── */
+  if (step === "quality_error") {
+    const isLiveness = qualityError?.includes("Live person");
+    return (
+      <Layout>
+        <div className="p-4 md:p-8 max-w-lg mx-auto w-full space-y-5">
+          <div className="bg-red-600 text-white rounded-xl p-4 flex items-center gap-3 shadow">
+            <AlertTriangle className="w-10 h-10 shrink-0" />
+            <div>
+              <p className="font-black text-xl leading-tight">
+                {isLiveness ? "Live Person Required" : "Photo Quality Too Low"}
+              </p>
+              <p className="text-white/80 text-sm">
+                {isLiveness ? "Do not use a photograph or screen" : "Retake in better conditions"}
+              </p>
+            </div>
+          </div>
+
+          {faceImage && (
+            <div className="flex flex-col items-center gap-2 py-2">
+              <img
+                src={faceImage}
+                alt="Rejected capture"
+                className="w-32 h-32 rounded-xl object-cover border-4 border-red-300"
+              />
+              <span className="text-xs font-bold text-red-500 uppercase tracking-wider">Rejected Photo</span>
+            </div>
+          )}
+
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+            <p className="text-red-900 font-bold text-base">{qualityError}</p>
+          </div>
+
+          {isLiveness ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-1">
+              <p className="text-amber-900 font-bold text-sm">Tips:</p>
+              <ul className="text-amber-800 text-sm space-y-1 list-disc list-inside">
+                <li>Hold the device in front of the actual person</li>
+                <li>Ensure the face is well-lit and clearly visible</li>
+                <li>Do not photograph a photo, ID card, or phone screen</li>
+              </ul>
+            </div>
+          ) : (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-1">
+              <p className="text-amber-900 font-bold text-sm">Tips:</p>
+              <ul className="text-amber-800 text-sm space-y-1 list-disc list-inside">
+                <li>Move closer so the face fills the oval</li>
+                <li>Ensure adequate lighting — avoid shadows</li>
+                <li>Hold steady and look directly at the camera</li>
+              </ul>
+            </div>
+          )}
+
+          <Button onClick={resetFlow} className="w-full h-16 text-xl font-bold">
+            <RefreshCw className="mr-2 h-6 w-6" /> Try Again
+          </Button>
+        </div>
+      </Layout>
+    );
+  }
 
   /* ── Camera step ────────────────────────────────────────────────── */
   if (step === "face") {

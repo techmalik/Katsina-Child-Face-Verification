@@ -243,6 +243,7 @@ export function Register() {
         subtitle="Look straight at the camera"
         overlayType="face"
         onCapture={handleFaceCapture}
+        onCancel={() => setLocation("/")}
       />
     );
   }

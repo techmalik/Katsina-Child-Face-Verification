@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Camera, RefreshCw, Check, Sun, SunDim, SwitchCamera } from "lucide-react";
+import { Camera, RefreshCw, Check, Sun, SunDim, SwitchCamera, X } from "lucide-react";
 
 interface CameraCaptureProps {
   onCapture: (images: string[]) => void;
+  onCancel?: () => void;
   overlayType?: "face" | "ear";
   title?: string;
   subtitle?: string;
@@ -134,6 +135,7 @@ type FacingMode = "environment" | "user";
 
 export function CameraCapture({
   onCapture,
+  onCancel,
   overlayType = "face",
   title = "Capture Photo",
   subtitle,
@@ -278,11 +280,24 @@ export function CameraCapture({
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
-      <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent z-10">
-        <h2 className="text-white text-lg sm:text-xl font-bold text-center">{title}</h2>
-        {subtitle && (
-          <p className="text-white/70 text-center text-sm mt-1">{subtitle}</p>
+      <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent z-10 flex items-start gap-3">
+        {onCancel && (
+          <button
+            onClick={() => { stopCamera(); onCancel(); }}
+            className="mt-0.5 w-10 h-10 rounded-full bg-white/20 border border-white/30 flex items-center justify-center active:scale-95 transition-transform shrink-0"
+            aria-label="Cancel"
+          >
+            <X className="h-5 w-5 text-white" />
+          </button>
         )}
+        <div className="flex-1 text-center">
+          <h2 className="text-white text-lg sm:text-xl font-bold">{title}</h2>
+          {subtitle && (
+            <p className="text-white/70 text-sm mt-1">{subtitle}</p>
+          )}
+        </div>
+        {/* Spacer to keep title centred when cancel button is shown */}
+        {onCancel && <div className="w-10 shrink-0" />}
       </div>
 
       <div className="flex-1 relative overflow-hidden bg-black flex items-center justify-center">

@@ -140,7 +140,18 @@ export function CameraCapture({
   const brightnessIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const capturedFramesRef = useRef<string[]>([]);
 
-  const [oval] = useState<OvalDims>(() => computeOval(overlayType));
+  const [oval, setOval] = useState<OvalDims>(() => computeOval(overlayType));
+
+  useEffect(() => {
+    const onResize = () => setOval(computeOval(overlayType));
+    window.addEventListener("resize", onResize);
+    screen.orientation?.addEventListener("change", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      screen.orientation?.removeEventListener("change", onResize);
+    };
+  }, [overlayType]);
+
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [error,  setError]  = useState<string | null>(null);
   const [ready,  setReady]  = useState(false);

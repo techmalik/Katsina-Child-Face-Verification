@@ -71,7 +71,7 @@ function DateRangePair({
             type="date"
             value={fromValue}
             onChange={(e) => onChange(fromKey, e.target.value)}
-            className="h-10 bg-gray-50 text-sm"
+            className="h-12 bg-gray-50 text-sm"
           />
         </div>
         <div>
@@ -82,7 +82,7 @@ function DateRangePair({
             type="date"
             value={toValue}
             onChange={(e) => onChange(toKey, e.target.value)}
-            className="h-10 bg-gray-50 text-sm"
+            className="h-12 bg-gray-50 text-sm"
           />
         </div>
       </div>
@@ -296,7 +296,7 @@ export function Registry() {
                   value={filterLga || "__all__"}
                   onValueChange={(v) => setParam("lga", v === "__all__" ? "" : v)}
                 >
-                  <SelectTrigger className="h-10 bg-gray-50">
+                  <SelectTrigger className="h-12 bg-gray-50">
                     <SelectValue placeholder="All LGAs" />
                   </SelectTrigger>
                   <SelectContent>
@@ -342,7 +342,7 @@ export function Registry() {
                   variant="ghost"
                   size="sm"
                   onClick={clearAllFilters}
-                  className="text-destructive hover:text-destructive/80 text-xs h-8 px-2 -ml-2"
+                  className="text-destructive hover:text-destructive/80 text-xs h-10 px-2 -ml-2"
                 >
                   <X className="w-3 h-3 mr-1" /> Clear all filters
                 </Button>

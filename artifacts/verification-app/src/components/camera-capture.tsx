@@ -9,11 +9,16 @@ interface CameraCaptureProps {
   subtitle?: string;
 }
 
+interface WindowWithWebkitAudio extends Window {
+  webkitAudioContext?: typeof AudioContext;
+}
+
 function playBeep(type: "shutter" | "success") {
   try {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    const AudioCtx =
+      window.AudioContext ?? (window as WindowWithWebkitAudio).webkitAudioContext;
     if (!AudioCtx) return;
-    const ctx = new AudioCtx() as AudioContext;
+    const ctx = new AudioCtx();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);

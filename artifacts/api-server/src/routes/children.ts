@@ -107,25 +107,29 @@ router.post("/", async (req, res) => {
       .json({ error: "No face detected in the face photo. Please retake in good light." });
   }
 
-  const bestDet = Math.max(...validFrames.map((f) => f.det));
-  const bestLiveness = Math.max(...validFrames.map((f) => f.liveness));
+  // Only frames that pass BOTH thresholds are used for averaging and storage.
+  // This prevents blurry or spoof-suspect frames from polluting stored embeddings.
+  const passingFrames = validFrames.filter(
+    (f) => f.det >= DET_THRESHOLD && f.liveness >= LIVENESS_THRESHOLD,
+  );
 
-  if (bestDet < DET_THRESHOLD) {
-    return res.status(400).json({
-      error: "Photo quality too low — move closer, ensure good lighting, and hold still.",
-      error_code: "quality_low",
-    });
-  }
-  if (bestLiveness < LIVENESS_THRESHOLD) {
+  if (passingFrames.length === 0) {
+    const bestByDet = validFrames.reduce((a, b) => (a.det > b.det ? a : b));
+    if (bestByDet.det < DET_THRESHOLD) {
+      return res.status(400).json({
+        error: "Photo quality too low — move closer, ensure good lighting, and hold still.",
+        error_code: "quality_low",
+      });
+    }
     return res.status(400).json({
       error: "Live person required — please do not use a photograph.",
       error_code: "liveness_failed",
     });
   }
 
-  // Average all valid embeddings for stable representation
-  const avgRaw = validFrames[0].embedding.map((_, j) =>
-    validFrames.reduce((s, f) => s + f.embedding[j], 0) / validFrames.length,
+  // Average only threshold-passing embeddings for stable duplicate check
+  const avgRaw = passingFrames[0].embedding.map((_, j) =>
+    passingFrames.reduce((s, f) => s + f.embedding[j], 0) / passingFrames.length,
   );
   const avgEmb = l2normalize(avgRaw);
 
@@ -189,15 +193,14 @@ router.post("/", async (req, res) => {
     })
     .returning();
 
-  // Store each valid frame's embedding separately for richer matching
-  for (let i = 0; i < embResult.face_embeddings.length; i++) {
-    if (embResult.face_detected[i]) {
-      await pool.query(
-        `INSERT INTO child_biometrics (child_id, photo_index, modality, embedding)
-         VALUES ($1, $2, 'face', $3::vector)`,
-        [child.id, i, vecStr(embResult.face_embeddings[i])],
-      );
-    }
+  // Store only threshold-passing frame embeddings to keep child_biometrics clean.
+  // passingFrames is guaranteed non-empty (checked above).
+  for (let idx = 0; idx < passingFrames.length; idx++) {
+    await pool.query(
+      `INSERT INTO child_biometrics (child_id, photo_index, modality, embedding)
+       VALUES ($1, $2, 'face', $3::vector)`,
+      [child.id, idx, vecStr(passingFrames[idx].embedding)],
+    );
   }
 
   return res.status(201).json({

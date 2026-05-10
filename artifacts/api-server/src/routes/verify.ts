@@ -67,26 +67,30 @@ router.post("/", async (req, res) => {
       .json({ error: "No face detected. Please retake the photo in good light." });
   }
 
-  // Gate on best frame scores (most lenient — at least one frame must pass)
-  const bestDet = Math.max(...validFrames.map((f) => f.det));
-  const bestLiveness = Math.max(...validFrames.map((f) => f.liveness));
+  // Require every frame used for matching to pass BOTH quality gates.
+  // Frames that fail either threshold are discarded; at least one must survive.
+  const passingFrames = validFrames.filter(
+    (f) => f.det >= DET_THRESHOLD && f.liveness >= LIVENESS_THRESHOLD,
+  );
 
-  if (bestDet < DET_THRESHOLD) {
-    return res.status(400).json({
-      error: "Photo quality too low — move closer, ensure good lighting, and hold still.",
-      error_code: "quality_low",
-    });
-  }
-  if (bestLiveness < LIVENESS_THRESHOLD) {
+  if (passingFrames.length === 0) {
+    // Diagnose which gate failed on the best detected frame
+    const bestByDet = validFrames.reduce((a, b) => (a.det > b.det ? a : b));
+    if (bestByDet.det < DET_THRESHOLD) {
+      return res.status(400).json({
+        error: "Photo quality too low — move closer, ensure good lighting, and hold still.",
+        error_code: "quality_low",
+      });
+    }
     return res.status(400).json({
       error: "Live person required — please do not use a photograph.",
       error_code: "liveness_failed",
     });
   }
 
-  // Average all valid frame embeddings for a stable representation
-  const avgRaw = validFrames[0].embedding.map((_, j) =>
-    validFrames.reduce((s, f) => s + f.embedding[j], 0) / validFrames.length,
+  // Average only threshold-passing frame embeddings for a stable representation
+  const avgRaw = passingFrames[0].embedding.map((_, j) =>
+    passingFrames.reduce((s, f) => s + f.embedding[j], 0) / passingFrames.length,
   );
   const faceEmb = l2normalize(avgRaw);
 

@@ -90,18 +90,20 @@ function DateRangePair({
   );
 }
 
+const FILTER_KEYS = ["lga", "dob_from", "dob_to", "registered_from", "registered_to", "verified_from", "verified_to"] as const;
+
 export function Registry() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const filterLga = searchParams.get("lga") ?? "";
-  const dobFrom = searchParams.get("dob_from") ?? "";
-  const dobTo = searchParams.get("dob_to") ?? "";
-  const regFrom = searchParams.get("reg_from") ?? "";
-  const regTo = searchParams.get("reg_to") ?? "";
-  const verFrom = searchParams.get("ver_from") ?? "";
-  const verTo = searchParams.get("ver_to") ?? "";
-  const sortVal = searchParams.get("sort") ?? "created_at-desc";
+  const filterLga       = searchParams.get("lga") ?? "";
+  const dobFrom         = searchParams.get("dob_from") ?? "";
+  const dobTo           = searchParams.get("dob_to") ?? "";
+  const registeredFrom  = searchParams.get("registered_from") ?? "";
+  const registeredTo    = searchParams.get("registered_to") ?? "";
+  const verifiedFrom    = searchParams.get("verified_from") ?? "";
+  const verifiedTo      = searchParams.get("verified_to") ?? "";
+  const sortVal         = searchParams.get("sort") ?? "created_at-desc";
 
   const [searchInput, setSearchInput] = useState(() => searchParams.get("q") ?? "");
   const debouncedSearch = useDebounce(searchInput, 350);
@@ -139,9 +141,7 @@ export function Registry() {
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
-        ["lga", "dob_from", "dob_to", "reg_from", "reg_to", "ver_from", "ver_to"].forEach((k) =>
-          next.delete(k),
-        );
+        FILTER_KEYS.forEach((k) => next.delete(k));
         return next;
       },
       { replace: true },
@@ -157,10 +157,10 @@ export function Registry() {
     lga: filterLga || undefined,
     dob_from: dobFrom || undefined,
     dob_to: dobTo || undefined,
-    registered_from: regFrom || undefined,
-    registered_to: regTo || undefined,
-    verified_from: verFrom || undefined,
-    verified_to: verTo || undefined,
+    registered_from: registeredFrom || undefined,
+    registered_to: registeredTo || undefined,
+    verified_from: verifiedFrom || undefined,
+    verified_to: verifiedTo || undefined,
     sort_by: sortBy,
     sort_dir: sortDir,
     limit: 50,
@@ -170,26 +170,15 @@ export function Registry() {
     query: { queryKey: getListChildrenQueryKey(queryParams) },
   });
 
-  const activeFilters: { label: string; paramKey: string | string[] }[] = [
-    ...(filterLga ? [{ label: `LGA: ${filterLga}`, paramKey: "lga" }] : []),
-    ...(dobFrom ? [{ label: `Born from ${dobFrom}`, paramKey: "dob_from" }] : []),
-    ...(dobTo ? [{ label: `Born to ${dobTo}`, paramKey: "dob_to" }] : []),
-    ...(regFrom ? [{ label: `Registered from ${regFrom}`, paramKey: "reg_from" }] : []),
-    ...(regTo ? [{ label: `Registered to ${regTo}`, paramKey: "reg_to" }] : []),
-    ...(verFrom ? [{ label: `Verified from ${verFrom}`, paramKey: "ver_from" }] : []),
-    ...(verTo ? [{ label: `Verified to ${verTo}`, paramKey: "ver_to" }] : []),
+  const activeFilters: { label: string; key: string }[] = [
+    ...(filterLga      ? [{ label: `LGA: ${filterLga}`,                   key: "lga"             }] : []),
+    ...(dobFrom        ? [{ label: `Born from ${dobFrom}`,                 key: "dob_from"        }] : []),
+    ...(dobTo          ? [{ label: `Born to ${dobTo}`,                     key: "dob_to"          }] : []),
+    ...(registeredFrom ? [{ label: `Registered from ${registeredFrom}`,    key: "registered_from" }] : []),
+    ...(registeredTo   ? [{ label: `Registered to ${registeredTo}`,        key: "registered_to"   }] : []),
+    ...(verifiedFrom   ? [{ label: `Last verified from ${verifiedFrom}`,   key: "verified_from"   }] : []),
+    ...(verifiedTo     ? [{ label: `Last verified to ${verifiedTo}`,       key: "verified_to"     }] : []),
   ];
-
-  const removeFilter = (paramKey: string | string[]) => {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        (Array.isArray(paramKey) ? paramKey : [paramKey]).forEach((k) => next.delete(k));
-        return next;
-      },
-      { replace: true },
-    );
-  };
 
   return (
     <Layout>
@@ -255,6 +244,34 @@ export function Registry() {
             </Button>
           </div>
 
+          {/* Active filter chips — always visible when any filter is active */}
+          {activeFilters.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2 items-center">
+              {activeFilters.map((f) => (
+                <Badge
+                  key={f.key}
+                  variant="secondary"
+                  className="flex items-center gap-1 pr-1 text-xs font-semibold"
+                >
+                  {f.label}
+                  <button
+                    onClick={() => setParam(f.key, "")}
+                    className="ml-0.5 rounded-full hover:bg-gray-300 p-0.5"
+                    aria-label={`Remove ${f.label} filter`}
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                </Badge>
+              ))}
+              <button
+                onClick={clearAllFilters}
+                className="text-xs font-semibold text-destructive hover:underline"
+              >
+                Clear all
+              </button>
+            </div>
+          )}
+
           {/* Filter panel */}
           {filtersOpen && (
             <div className="mt-3 p-4 bg-white border border-gray-200 rounded-xl shadow-sm space-y-4">
@@ -304,19 +321,19 @@ export function Registry() {
 
               <DateRangePair
                 label="Registration Date"
-                fromKey="reg_from"
-                toKey="reg_to"
-                fromValue={regFrom}
-                toValue={regTo}
+                fromKey="registered_from"
+                toKey="registered_to"
+                fromValue={registeredFrom}
+                toValue={registeredTo}
                 onChange={setParam}
               />
 
               <DateRangePair
                 label="Last Verification Date"
-                fromKey="ver_from"
-                toKey="ver_to"
-                fromValue={verFrom}
-                toValue={verTo}
+                fromKey="verified_from"
+                toKey="verified_to"
+                fromValue={verifiedFrom}
+                toValue={verifiedTo}
                 onChange={setParam}
               />
 
@@ -330,34 +347,6 @@ export function Registry() {
                   <X className="w-3 h-3 mr-1" /> Clear all filters
                 </Button>
               )}
-            </div>
-          )}
-
-          {/* Active filter chips (shown when panel is closed) */}
-          {activeFilters.length > 0 && !filtersOpen && (
-            <div className="flex flex-wrap gap-1.5 mt-2 items-center">
-              {activeFilters.map((f) => (
-                <Badge
-                  key={Array.isArray(f.paramKey) ? f.paramKey.join(",") : f.paramKey}
-                  variant="secondary"
-                  className="flex items-center gap-1 pr-1 text-xs font-semibold"
-                >
-                  {f.label}
-                  <button
-                    onClick={() => removeFilter(f.paramKey)}
-                    className="ml-0.5 rounded-full hover:bg-gray-300 p-0.5"
-                    aria-label={`Remove ${f.label} filter`}
-                  >
-                    <X className="w-2.5 h-2.5" />
-                  </button>
-                </Badge>
-              ))}
-              <button
-                onClick={clearAllFilters}
-                className="text-xs font-semibold text-destructive hover:underline"
-              >
-                Clear all
-              </button>
             </div>
           )}
         </header>
@@ -386,12 +375,7 @@ export function Registry() {
                   : "No children registered yet."}
               </p>
               {activeFilters.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={clearAllFilters}
-                  className="mt-3"
-                >
+                <Button variant="outline" size="sm" onClick={clearAllFilters} className="mt-3">
                   Clear filters
                 </Button>
               )}

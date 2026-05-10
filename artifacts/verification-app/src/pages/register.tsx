@@ -1,19 +1,47 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useRegisterChild, useListLgas, getListLgasQueryKey } from "@workspace/api-client-react";
+import {
+  useVerifyChild,
+  useRegisterChild,
+  useListLgas,
+  getListLgasQueryKey,
+} from "@workspace/api-client-react";
+import type { VerificationResult } from "@workspace/api-client-react";
 import { Layout } from "@/components/layout";
 import { CameraCapture } from "@/components/camera-capture";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Camera, ArrowRight, Loader2 } from "lucide-react";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  CheckCircle2,
+  AlertTriangle,
+  MapPin,
+  Loader2,
+  ArrowRight,
+  Camera,
+  RefreshCw,
+} from "lucide-react";
 import { toast } from "sonner";
+
+type Step = "face" | "ear" | "checking" | "exists" | "review" | "new_form";
 
 const formSchema = z.object({
   first_name: z.string().min(1, "First name is required"),
@@ -29,11 +57,16 @@ type FormValues = z.infer<typeof formSchema>;
 
 export function Register() {
   const [, setLocation] = useLocation();
-  const [step, setStep] = useState<"face" | "ear" | "form">("face");
-  const [faceImages, setFaceImages] = useState<string[]>([]);
-  const [earImages, setEarImages] = useState<string[]>([]);
-  
+  const [step, setStep] = useState<Step>("face");
+  const [faceImage, setFaceImage] = useState<string | null>(null);
+  const [earImage, setEarImage] = useState<string | null>(null);
+  const [verifyResult, setVerifyResult] = useState<VerificationResult | null>(null);
+  const [gpsLat, setGpsLat] = useState<number | null>(null);
+  const [gpsLng, setGpsLng] = useState<number | null>(null);
+  const [gpsError, setGpsError] = useState(false);
+
   const { data: lgas } = useListLgas({ query: { queryKey: getListLgasQueryKey() } });
+  const verifyMutation = useVerifyChild();
   const registerMutation = useRegisterChild();
 
   const form = useForm<FormValues>({
@@ -49,87 +82,350 @@ export function Register() {
     },
   });
 
-  const handleFaceCapture = (base64: string) => {
-    setFaceImages([...faceImages, base64]);
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGpsLat(pos.coords.latitude);
+        setGpsLng(pos.coords.longitude);
+      },
+      () => setGpsError(true),
+      { timeout: 8000, maximumAge: 60000 }
+    );
+  }, []);
+
+  const resetFlow = () => {
+    setStep("face");
+    setFaceImage(null);
+    setEarImage(null);
+    setVerifyResult(null);
+    form.reset();
+  };
+
+  const handleFaceCapture = (img: string) => {
+    setFaceImage(img);
     setStep("ear");
   };
 
-  const handleEarCapture = (base64: string) => {
-    setEarImages([...earImages, base64]);
-    setStep("form");
+  const handleEarCapture = (img: string) => {
+    setEarImage(img);
+    setStep("checking");
+    verifyMutation.mutate(
+      {
+        data: {
+          face_image: faceImage!,
+          ear_image: img,
+          gps_lat: gpsLat ?? null,
+          gps_lng: gpsLng ?? null,
+        },
+      },
+      {
+        onSuccess: (data) => {
+          setVerifyResult(data);
+          if (data.status === "match") setStep("exists");
+          else if (data.status === "review") setStep("review");
+          else setStep("new_form");
+        },
+        onError: () => {
+          setStep("new_form");
+        },
+      }
+    );
   };
 
   const onSubmit = (data: FormValues) => {
-    if (faceImages.length === 0 || earImages.length === 0) {
+    if (!faceImage || !earImage) {
       toast.error("Photos are required");
       return;
     }
-
     registerMutation.mutate(
       {
         data: {
           ...data,
-          face_images: faceImages,
-          ear_images: earImages,
-          gps_lat: 12.9816, // mock GPS
-          gps_lng: 7.6222
-        }
+          face_images: [faceImage],
+          ear_images: [earImage],
+          gps_lat: gpsLat ?? undefined,
+          gps_lng: gpsLng ?? undefined,
+        },
       },
       {
         onSuccess: () => {
           toast.success("Child registered successfully");
           setLocation("/registry");
         },
-        onError: (err) => {
-          toast.error((err as any)?.error || "Registration failed");
-        }
+        onError: (err: unknown) => {
+          toast.error((err as { error?: string })?.error ?? "Registration failed");
+        },
       }
     );
   };
 
+  /* ── Camera steps ───────────────────────────────────────────────── */
   if (step === "face") {
-    return <CameraCapture title="Capture Face" overlayType="face" onCapture={handleFaceCapture} />;
+    return (
+      <CameraCapture
+        title="Step 1 of 2 — Face Photo"
+        subtitle="Look straight at the camera"
+        overlayType="face"
+        onCapture={handleFaceCapture}
+      />
+    );
   }
 
   if (step === "ear") {
-    return <CameraCapture title="Capture Profile/Ear" overlayType="ear" onCapture={handleEarCapture} />;
+    return (
+      <CameraCapture
+        title="Step 2 of 2 — Profile / Ear"
+        subtitle="Turn the child's head to the side"
+        overlayType="ear"
+        onCapture={handleEarCapture}
+      />
+    );
   }
 
+  /* ── Checking ───────────────────────────────────────────────────── */
+  if (step === "checking") {
+    return (
+      <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-6 text-center">
+        <div className="flex gap-4 mb-10">
+          {faceImage && (
+            <div className="flex flex-col items-center gap-2">
+              <img
+                src={faceImage}
+                alt="Face"
+                className="w-32 h-32 rounded-xl object-cover border-2 border-white/30"
+              />
+              <span className="text-white/60 text-xs font-bold uppercase tracking-wider">Face</span>
+            </div>
+          )}
+          {earImage && (
+            <div className="flex flex-col items-center gap-2">
+              <img
+                src={earImage}
+                alt="Ear"
+                className="w-32 h-32 rounded-xl object-cover border-2 border-white/30"
+              />
+              <span className="text-white/60 text-xs font-bold uppercase tracking-wider">Profile</span>
+            </div>
+          )}
+        </div>
+        <div className="w-14 h-14 border-4 border-gray-700 border-t-white rounded-full animate-spin mb-6" />
+        <h2 className="text-2xl font-bold text-white">Checking database…</h2>
+        <p className="text-gray-400 mt-2">Searching for matching record</p>
+      </div>
+    );
+  }
+
+  /* ── Already exists ─────────────────────────────────────────────── */
+  if (step === "exists") {
+    const child = verifyResult?.child;
+    return (
+      <Layout>
+        <div className="p-4 md:p-8 max-w-lg mx-auto w-full space-y-5">
+          {/* Green indicator banner */}
+          <div className="bg-green-500 text-white rounded-xl p-4 flex items-center gap-3 shadow">
+            <CheckCircle2 className="w-10 h-10 shrink-0" />
+            <div>
+              <p className="font-black text-xl leading-tight">Already Registered</p>
+              <p className="text-white/80 text-sm">This child is already in the database</p>
+            </div>
+          </div>
+
+          {/* Captured photos */}
+          <div className="flex gap-3">
+            {faceImage && (
+              <div className="flex flex-col items-center gap-1">
+                <img src={faceImage} alt="Face" className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200" />
+                <span className="text-xs font-bold text-gray-500 uppercase">Scanned Face</span>
+              </div>
+            )}
+            {earImage && (
+              <div className="flex flex-col items-center gap-1">
+                <img src={earImage} alt="Ear" className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200" />
+                <span className="text-xs font-bold text-gray-500 uppercase">Scanned Profile</span>
+              </div>
+            )}
+            {verifyResult?.confidence != null && (
+              <div className="flex flex-col items-center justify-center ml-auto px-4 bg-green-50 rounded-lg border border-green-200">
+                <p className="text-3xl font-black text-green-700">
+                  {Math.round(verifyResult.confidence * 100)}%
+                </p>
+                <p className="text-xs font-bold text-green-600 uppercase">Match</p>
+              </div>
+            )}
+          </div>
+
+          {/* Child record card */}
+          {child && (
+            <div className="bg-white rounded-xl p-5 shadow border space-y-4">
+              <div className="flex gap-4 items-start">
+                {child.face_photo ? (
+                  <img
+                    src={child.face_photo}
+                    alt={child.first_name}
+                    className="w-20 h-20 rounded-full object-cover border-2 border-gray-200 shrink-0"
+                  />
+                ) : (
+                  <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center border-2 border-gray-200 shrink-0">
+                    <span className="text-3xl font-black text-gray-400">
+                      {child.first_name[0]}
+                    </span>
+                  </div>
+                )}
+                <div>
+                  <p className="text-2xl font-black text-gray-900">
+                    {child.first_name} {child.surname}
+                  </p>
+                  <p className="text-gray-600 font-medium">Guardian: {child.guardian_name}</p>
+                  <p className="text-gray-500 text-sm">{child.lga} · {child.village}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t">
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase">Date of Birth</p>
+                  <p className="font-semibold text-gray-800">{child.date_of_birth}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase">Village</p>
+                  <p className="font-semibold text-gray-800">{child.village}</p>
+                </div>
+                {child.visible_marks && (
+                  <div className="col-span-2">
+                    <p className="text-xs font-bold text-gray-400 uppercase">Visible Marks</p>
+                    <p className="font-semibold text-gray-800">{child.visible_marks}</p>
+                  </div>
+                )}
+              </div>
+
+              {(child.verification_count ?? 0) > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                  <p className="text-amber-800 font-bold text-sm">
+                    Previously verified {child.verification_count} time(s) — do not issue again
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="space-y-3 pt-2">
+            <Button onClick={() => setLocation("/")} className="w-full h-14 text-lg font-bold">
+              Done — Return Home
+            </Button>
+            <Button variant="outline" onClick={resetFlow} className="w-full h-14 text-lg">
+              <RefreshCw className="mr-2 h-5 w-5" /> Scan Another Child
+            </Button>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  /* ── Needs supervisor review ────────────────────────────────────── */
+  if (step === "review") {
+    return (
+      <Layout>
+        <div className="p-4 md:p-8 max-w-lg mx-auto w-full space-y-5">
+          <div className="bg-yellow-400 text-gray-900 rounded-xl p-4 flex items-center gap-3 shadow">
+            <AlertTriangle className="w-10 h-10 shrink-0" />
+            <div>
+              <p className="font-black text-xl leading-tight">Needs Supervisor Review</p>
+              <p className="text-gray-800 text-sm">Match uncertain — escalated for review</p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            {faceImage && (
+              <div className="flex flex-col items-center gap-1">
+                <img src={faceImage} alt="Face" className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200" />
+                <span className="text-xs font-bold text-gray-500 uppercase">Face</span>
+              </div>
+            )}
+            {earImage && (
+              <div className="flex flex-col items-center gap-1">
+                <img src={earImage} alt="Ear" className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200" />
+                <span className="text-xs font-bold text-gray-500 uppercase">Profile</span>
+              </div>
+            )}
+          </div>
+          <p className="text-gray-600">The record has been flagged for supervisor review. Do not issue donations until cleared.</p>
+          <div className="space-y-3">
+            <Button onClick={() => setLocation("/")} className="w-full h-14 text-lg font-bold">
+              Done — Return Home
+            </Button>
+            <Button variant="outline" onClick={resetFlow} className="w-full h-14 text-lg">
+              <RefreshCw className="mr-2 h-5 w-5" /> Scan Again
+            </Button>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  /* ── New child — registration form ─────────────────────────────── */
   return (
     <Layout>
       <div className="p-4 md:p-8 max-w-2xl mx-auto w-full">
         <header className="mb-6">
+          {/* New child indicator */}
+          <div className="bg-blue-600 text-white rounded-xl p-3 flex items-center gap-3 mb-4 shadow">
+            <CheckCircle2 className="w-7 h-7 shrink-0" />
+            <div>
+              <p className="font-black text-lg leading-tight">New Child — Not in Database</p>
+              <p className="text-white/80 text-sm">Complete the form to register</p>
+            </div>
+          </div>
           <h2 className="text-3xl font-black text-gray-900 tracking-tight">Register Child</h2>
           <p className="text-gray-600 font-medium">Enter personal details to complete registration</p>
         </header>
 
-        {/* Photo Summary */}
-        <div className="flex gap-4 mb-8">
-          {faceImages[0] && (
-            <div className="relative w-24 h-24 rounded-lg overflow-hidden border-2 border-gray-200">
-              <img src={faceImages[0]} alt="Face" className="w-full h-full object-cover" />
-              <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] font-bold text-center py-1">FACE</div>
+        {/* Captured photo thumbnails */}
+        <div className="flex gap-3 mb-6">
+          {faceImage && (
+            <div className="flex flex-col items-center gap-1">
+              <img src={faceImage} alt="Face" className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200" />
+              <span className="text-xs font-bold text-gray-500 uppercase">Face</span>
             </div>
           )}
-          {earImages[0] && (
-            <div className="relative w-24 h-24 rounded-lg overflow-hidden border-2 border-gray-200">
-              <img src={earImages[0]} alt="Ear" className="w-full h-full object-cover" />
-              <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] font-bold text-center py-1">PROFILE</div>
+          {earImage && (
+            <div className="flex flex-col items-center gap-1">
+              <img src={earImage} alt="Profile" className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200" />
+              <span className="text-xs font-bold text-gray-500 uppercase">Profile</span>
             </div>
           )}
-          <Button 
-            variant="outline" 
-            className="w-24 h-24 flex flex-col items-center justify-center border-dashed"
-            onClick={() => setStep("face")}
+          <Button
+            variant="outline"
+            className="flex flex-col items-center justify-center w-24 h-24 border-dashed self-start"
+            onClick={resetFlow}
           >
             <Camera className="w-6 h-6 mb-1" />
             <span className="text-xs font-bold">Retake</span>
           </Button>
         </div>
 
+        {/* GPS coordinates — auto-populated */}
+        <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-start gap-3">
+          <MapPin className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-bold text-gray-700 mb-1">GPS Coordinates (auto-detected)</p>
+            {gpsLat != null && gpsLng != null ? (
+              <p className="text-sm font-mono text-gray-600">
+                {gpsLat.toFixed(6)}, {gpsLng.toFixed(6)}
+              </p>
+            ) : gpsError ? (
+              <p className="text-sm text-gray-400 italic">GPS unavailable — location not recorded</p>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-gray-400">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Acquiring GPS…
+              </div>
+            )}
+          </div>
+        </div>
+
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <FormField
                 control={form.control}
                 name="first_name"
@@ -143,7 +439,6 @@ export function Register() {
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name="surname"
@@ -187,7 +482,7 @@ export function Register() {
               )}
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <FormField
                 control={form.control}
                 name="lga"
@@ -212,7 +507,6 @@ export function Register() {
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name="village"
@@ -235,10 +529,10 @@ export function Register() {
                 <FormItem>
                   <FormLabel className="text-base font-bold">Visible Marks (Optional)</FormLabel>
                   <FormControl>
-                    <Textarea 
-                      placeholder="e.g. Scar on left cheek" 
-                      className="min-h-[100px] text-lg resize-none" 
-                      {...field} 
+                    <Textarea
+                      placeholder="e.g. Scar on left cheek"
+                      className="min-h-[100px] text-lg resize-none"
+                      {...field}
                     />
                   </FormControl>
                   <FormMessage />
@@ -246,15 +540,19 @@ export function Register() {
               )}
             />
 
-            <Button 
-              type="submit" 
-              className="w-full h-16 text-xl font-bold" 
+            <Button
+              type="submit"
+              className="w-full h-16 text-xl font-bold"
               disabled={registerMutation.isPending}
             >
               {registerMutation.isPending ? (
-                <><Loader2 className="mr-2 h-6 w-6 animate-spin" /> Saving...</>
+                <>
+                  <Loader2 className="mr-2 h-6 w-6 animate-spin" /> Saving…
+                </>
               ) : (
-                <><ArrowRight className="mr-2 h-6 w-6" /> Complete Registration</>
+                <>
+                  <ArrowRight className="mr-2 h-6 w-6" /> Complete Registration
+                </>
               )}
             </Button>
           </form>

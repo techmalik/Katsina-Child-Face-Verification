@@ -234,4 +234,17 @@
   .min-h-touch {
     min-height: 56px;
   }
+
+  /* iOS/Android safe-area inset utilities for fixed bottom bars */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .mb-safe {
+    margin-bottom: env(safe-area-inset-bottom, 0px);
+  }
 }

@@ -256,7 +256,7 @@ export function Registry() {
                   {f.label}
                   <button
                     onClick={() => setParam(f.key, "")}
-                    className="ml-0.5 rounded-full hover:bg-gray-300 min-h-[40px] min-w-[40px] flex items-center justify-center"
+                    className="ml-0.5 rounded-full hover:bg-gray-300 min-h-[48px] min-w-[48px] flex items-center justify-center"
                     aria-label={`Remove ${f.label} filter`}
                   >
                     <X className="w-3 h-3" />

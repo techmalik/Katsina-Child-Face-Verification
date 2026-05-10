@@ -10,7 +10,7 @@ tags:
   - name: health
     description: Health operations
   - name: verification
-    description: Face + ear verification operations
+    description: Face verification operations
   - name: children
     description: Child registry operations
   - name: verifications
@@ -37,7 +37,7 @@ paths:
       operationId: verifyChild
       tags: [verification]
       summary: Verify a child against the database
-      description: Submit face and ear images to check if the child is already registered. Returns a result tier - match, new, or needs human review.
+      description: Submit a face image to check if the child is already registered. Returns a result tier - match, new, or needs human review.
       requestBody:
         required: true
         content:
@@ -106,7 +106,7 @@ paths:
       operationId: registerChild
       tags: [children]
       summary: Register a new child
-      description: Register a new child with face and ear biometric images and personal information.
+      description: Register a new child with face biometric images and personal information.
       requestBody:
         required: true
         content:
@@ -387,13 +387,6 @@ components:
           minItems: 1
           maxItems: 3
           description: Base64-encoded face images (1-3 frontal shots)
-        ear_images:
-          type: array
-          items:
-            type: string
-          minItems: 1
-          maxItems: 3
-          description: Base64-encoded ear/profile images (1-3 shots)
       required:
         - first_name
         - surname
@@ -402,7 +395,6 @@ components:
         - lga
         - village
         - face_images
-        - ear_images
 
     ChildrenList:
       type: object
@@ -423,16 +415,12 @@ components:
         face_image:
           type: string
           description: Base64-encoded frontal face image
-        ear_image:
-          type: string
-          description: Base64-encoded profile/ear image
         gps_lat:
           type: ["number", "null"]
         gps_lng:
           type: ["number", "null"]
       required:
         - face_image
-        - ear_image
 
     VerificationResult:
       type: object
@@ -443,7 +431,7 @@ components:
           description: "new = first visit, match = already verified, review = needs supervisor"
         confidence:
           type: ["number", "null"]
-          description: Fused match confidence score 0-1
+          description: Face match confidence score 0-1
         child:
           description: Matched child record (null if new)
           oneOf:

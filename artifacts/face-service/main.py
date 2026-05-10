@@ -1,22 +1,15 @@
 """
 Katsina State Child Verification — Face Embedding Service
-Uses InsightFace (ArcFace backbone, buffalo_l model) for face embeddings.
 
-Quality scoring:
-  det_score      — InsightFace SCRFD face detection confidence (0–1).
-                   Gate at >= 0.6 to reject blurry/small/occluded captures.
-  liveness_score — ONNX model inference (antispoof.onnx, loaded via onnxruntime).
-                   Three-component analytical model: Laplacian sharpness +
-                   luminance texture + moire/periodic-band detection (inverted).
-                   Gate at >= 0.5 to reject suspected photo/screen attacks.
-
-Note on the anti-spoofing model:
-  InsightFace buffalo_l ships detection, landmarks, genderage, and ArcFace
-  recognition — it does NOT include an anti-spoofing model, and none is
-  available for download in this environment (external downloads blocked).
-  antispoof.onnx is built by build_antispoof_model.py using fixed analytical
-  weights and run via onnxruntime; it is NOT a trained neural network.
-  A trained model should replace it when available (task #18).
+Models:
+  buffalo_l   — InsightFace pack: SCRFD detection, ArcFace recognition,
+                landmark and genderage models.
+  antispoof   — quality_gate_v1 ONNX model (antispoof.onnx) run via
+                onnxruntime.  Scores capture quality (sharpness, texture,
+                spatial contrast) in [0, 1].  Gates at >= 0.5 to reject
+                blurry, flat, and underexposed captures.  Does not distinguish
+                a sharp live face from a clear printed photograph; a trained
+                anti-spoofing model is required for that (task #18).
 """
 
 import os
@@ -47,7 +40,7 @@ _models_loading = False
 
 
 def _ensure_models():
-    """Load InsightFace and the anti-spoofing ONNX model on first call."""
+    """Load InsightFace and the quality-gate ONNX model on first call."""
     global face_app, _antispoof_session, _models_loading
     if face_app is not None:
         return
@@ -117,23 +110,7 @@ def normalise(vec: np.ndarray) -> list[float]:
 
 
 def compute_liveness_score(img_rgb: np.ndarray, bbox) -> float:
-    """
-    Run the antispoof.onnx model on the detected face region and return a
-    liveness score in [0, 1].
-
-    The ONNX model (built by build_antispoof_model.py) encodes a
-    three-component analytical pipeline as proper ONNX graph operations run
-    through onnxruntime:
-      1. Laplacian sharpness  — blurry / out-of-focus captures score low.
-      2. Luminance texture    — flat or featureless regions score low.
-      3. Moire-band detection — periodic spatial-frequency energy from
-                                screen pixel-grids is detected via bandpass
-                                convolution kernels and INVERTED, so
-                                screen/print captures score lower.
-
-    The _antispoof_session must be loaded before calling this function
-    (_ensure_models guarantees this).
-    """
+    """Run antispoof.onnx on the face bounding box crop; return score in [0, 1]."""
     if _antispoof_session is None:
         return 0.0
 

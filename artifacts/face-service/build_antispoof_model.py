@@ -1,21 +1,21 @@
 """
-Build and save the analytical anti-spoofing ONNX model used by the face service.
+Build the quality-gate ONNX model (antispoof.onnx) used by the face service.
 
-The model encodes a three-component liveness heuristic as a proper ONNX graph
-with fixed analytical weights run through onnxruntime:
+Three components, all implemented as fixed-weight ONNX graph operations run
+through onnxruntime:
+  1. Laplacian sharpness  — blurry/out-of-focus captures score low.
+  2. Luminance texture    — flat or featureless regions score low.
+  3. Spatial contrast     — four-quadrant luminance variance; underexposed or
+                            uniformly-lit cards score low.
 
-  1. Sharpness   — Laplacian convolution variance (blurry captures score low)
-  2. Texture     — Luminance standard deviation (flat/uniform regions score low)
-  3. Moire-band  — High-frequency energy in two narrow spatial-frequency bands;
-                   screen/print pixel-grids create strong periodic energy in
-                   these bands that real skin texture does not, so the moire
-                   component INVERTS high energy → low liveness score.
+Input : [1, 3, 80, 80] float32, values in [0, 255]
+Output: [] float32 quality score in [0, 1]
 
-Inputs  : [1, 3, 80, 80] float32 face crop, values in [0, 255]
-Outputs : [] float32  liveness score in [0, 1]
+Limitation: this gate rejects blurry, flat, and underexposed captures but
+cannot distinguish a sharp live face from a clear printed photograph.
+A trained anti-spoofing model (task #18) should replace it when available.
 
 Run this script once to write antispoof.onnx alongside it.
-The face service loads it on startup via onnxruntime.InferenceSession.
 """
 
 import os
@@ -32,37 +32,32 @@ def _const(name: str, array: np.ndarray):
 
 
 def build() -> onnx.ModelProto:
-    inits = []
-    nodes = []
+    inits: list = []
+    nodes: list = []
 
-    # ── Grayscale conversion ──────────────────────────────────────────────────
-    # Conv [1,3,80,80] x [1,3,1,1] → [1,1,80,80]
+    # Grayscale: Conv [1,3,80,80] x [1,3,1,1] → [1,1,80,80], then /255 → [0,1]
     gray_w = np.array([0.299, 0.587, 0.114], dtype=np.float32).reshape(1, 3, 1, 1)
     inits.append(_const("gray_w", gray_w))
     nodes.append(helper.make_node("Conv", ["input", "gray_w"], ["gray"]))
-
-    # Normalise to [0,1] for stable downstream arithmetic
     inits.append(_const("c255", np.array([255.0])))
     nodes.append(helper.make_node("Div", ["gray", "c255"], ["gray_n"]))
 
-    # ── Component 1: Sharpness (Laplacian variance) ───────────────────────────
-    # Conv [1,1,80,80] x [1,1,3,3] → [1,1,78,78]
+    inits.append(_const("c0f", np.array([0.0])))
+    inits.append(_const("c1f", np.array([1.0])))
+
+    # Component 1: Laplacian sharpness
+    # Conv [1,1,80,80] → [1,1,78,78]; sharpness = mean(lap²) / 0.002
     lap_k = np.array([[0, -1, 0], [-1, 4, -1], [0, -1, 0]], dtype=np.float32).reshape(1, 1, 3, 3)
     inits.append(_const("lap_k", lap_k))
     nodes.append(helper.make_node("Conv", ["gray_n", "lap_k"], ["lap_out"]))
-
-    # variance = mean(lap^2)
     nodes.append(helper.make_node("Mul", ["lap_out", "lap_out"], ["lap_sq"]))
     nodes.append(helper.make_node("ReduceMean", ["lap_sq"], ["lap_mean"],
                                   axes=list(range(4)), keepdims=0))
-    # scale: variance ~0.002 for sharp, normalise by 0.002 → 1.0
     inits.append(_const("lap_scale", np.array([0.002])))
     nodes.append(helper.make_node("Div", ["lap_mean", "lap_scale"], ["sharp_raw"]))
-    inits.append(_const("c0f", np.array([0.0])))
-    inits.append(_const("c1f", np.array([1.0])))
     nodes.append(helper.make_node("Clip", ["sharp_raw", "c0f", "c1f"], ["sharp"]))
 
-    # ── Component 2: Texture richness (luminance std-dev) ────────────────────
+    # Component 2: Luminance texture (std-dev of gray_n, normalised by 0.18)
     nodes.append(helper.make_node("ReduceMean", ["gray_n"], ["gn_mean"],
                                   axes=list(range(4)), keepdims=1))
     nodes.append(helper.make_node("Sub", ["gray_n", "gn_mean"], ["gn_c"]))
@@ -70,40 +65,27 @@ def build() -> onnx.ModelProto:
     nodes.append(helper.make_node("ReduceMean", ["gn_sq"], ["gn_var"],
                                   axes=list(range(4)), keepdims=0))
     nodes.append(helper.make_node("Sqrt", ["gn_var"], ["gn_std"]))
-    # normalise: std ~0.18 for rich-texture face, divide by 0.18
     inits.append(_const("tex_scale", np.array([0.18])))
     nodes.append(helper.make_node("Div", ["gn_std", "tex_scale"], ["tex_raw"]))
     nodes.append(helper.make_node("Clip", ["tex_raw", "c0f", "c1f"], ["tex"]))
 
-    # ── Component 3: Local contrast ratio (spatial non-uniformity) ───────────
-    # Divides the face crop into quadrants and measures variance of per-quadrant
-    # mean luminance. Real faces have more spatial variation across regions than
-    # a uniform card or overexposed capture.  Implemented as a fixed average-pool
-    # + variance calculation, which has exact ONNX operator support.
-    #
-    # AveragePool with 40x40 kernel, stride 40 → 4 region means in [1,1,2,2]
+    # Component 3: Spatial contrast (inter-quadrant luminance variance)
+    # AveragePool 40×40, stride 40 → [1,1,2,2] quadrant means
     nodes.append(helper.make_node(
-        "AveragePool", ["gray_n"], ["quadrant_means"],
+        "AveragePool", ["gray_n"], ["quad_means"],
         kernel_shape=[40, 40], strides=[40, 40],
     ))
-    nodes.append(helper.make_node("ReduceMean", ["quadrant_means"], ["qm_mean"],
+    nodes.append(helper.make_node("ReduceMean", ["quad_means"], ["qm_mean"],
                                   axes=[0, 1, 2, 3], keepdims=1))
-    nodes.append(helper.make_node("Sub", ["quadrant_means", "qm_mean"], ["qm_c"]))
+    nodes.append(helper.make_node("Sub", ["quad_means", "qm_mean"], ["qm_c"]))
     nodes.append(helper.make_node("Mul", ["qm_c", "qm_c"], ["qm_sq"]))
     nodes.append(helper.make_node("ReduceMean", ["qm_sq"], ["qm_var"],
                                   axes=[0, 1, 2, 3], keepdims=0))
-    # Normalise: well-lit face has inter-quadrant variance ~0.001; flat card ~0.0001
     inits.append(_const("qm_scale", np.array([0.002])))
     nodes.append(helper.make_node("Div", ["qm_var", "qm_scale"], ["contrast_raw"]))
     nodes.append(helper.make_node("Clip", ["contrast_raw", "c0f", "c1f"], ["contrast"]))
 
-    # ── Combine: 0.45 * sharp + 0.30 * tex + 0.25 * contrast ────────────────
-    # Weights chosen so that:
-    #   - A blurry capture (sharp≈0) scores ≤ 0.55 even with perfect tex+contrast
-    #   - A flat card (tex≈0, contrast≈0) scores ≤ 0.45 even if sharp=1
-    #   - A good live capture (sharp≈0.8, tex≈0.9, contrast≈0.8) scores ≈ 0.87
-    # Note: a clear printed photograph may still score > 0.5 — a trained
-    # anti-spoofing model (task #18) is required to reliably distinguish those.
+    # Combine: 0.45 * sharp + 0.30 * tex + 0.25 * contrast
     inits.append(_const("w_sharp", np.array([0.45])))
     inits.append(_const("w_tex", np.array([0.30])))
     inits.append(_const("w_contrast", np.array([0.25])))
@@ -115,7 +97,7 @@ def build() -> onnx.ModelProto:
 
     graph = helper.make_graph(
         nodes,
-        "antispoof_v1",
+        "quality_gate_v1",
         [helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 3, 80, 80])],
         [helper.make_tensor_value_info("liveness_score", TensorProto.FLOAT, [])],
         initializer=inits,
@@ -127,10 +109,9 @@ def build() -> onnx.ModelProto:
     )
     model.ir_version = 7
     model.doc_string = (
-        "Analytical anti-spoofing model for Katsina Child Verification Platform. "
-        "Three-component liveness estimator: Laplacian sharpness + luminance texture "
-        "+ moire/periodic-band detection (inverted). Weights are analytical, not "
-        "learned. Replace with a trained model when available (task #18)."
+        "Capture quality gate for Katsina Child Verification. "
+        "Laplacian sharpness + luminance texture + spatial contrast. "
+        "Analytical weights; not a trained anti-spoofing model."
     )
     onnx.checker.check_model(model)
     return model
@@ -141,9 +122,8 @@ if __name__ == "__main__":
     onnx.save(m, MODEL_PATH)
     print(f"Saved {MODEL_PATH}  ({os.path.getsize(MODEL_PATH)} bytes)")
 
-    # Quick smoke-test
     import onnxruntime as ort
     sess = ort.InferenceSession(MODEL_PATH, providers=["CPUExecutionProvider"])
     dummy = np.random.randint(50, 200, (1, 3, 80, 80)).astype(np.float32)
-    score = sess.run(["liveness_score"], {"input": dummy})[0]
-    print(f"Smoke-test score for random face crop: {float(score):.4f}  (expected 0–1)")
+    out = sess.run(["liveness_score"], {"input": dummy})[0]
+    print(f"Smoke-test score: {float(np.asarray(out).flat[0]):.4f}")

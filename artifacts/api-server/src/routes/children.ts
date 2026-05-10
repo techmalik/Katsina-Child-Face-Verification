@@ -143,7 +143,6 @@ router.post("/", async (req, res) => {
       gps_lat: gps_lat ?? null,
       gps_lng: gps_lng ?? null,
       face_photo: facePhoto,
-      ear_photo: null,
     })
     .returning();
 

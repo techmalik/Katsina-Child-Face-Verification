@@ -25,7 +25,7 @@ export function Verify() {
           face_image: face,
           gps_lat: null,
           gps_lng: null,
-        } as any,
+        },
       },
       {
         onSuccess: () => setStep("result"),

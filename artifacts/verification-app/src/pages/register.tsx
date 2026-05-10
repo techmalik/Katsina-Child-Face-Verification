@@ -110,9 +110,9 @@ export function Register() {
       {
         data: {
           face_image: img,
-          gps_lat: gpsLat ?? null,
-          gps_lng: gpsLng ?? null,
-        } as any,
+          gps_lat: gpsLat,
+          gps_lng: gpsLng,
+        },
       },
       {
         onSuccess: (data) => {
@@ -136,11 +136,17 @@ export function Register() {
     registerMutation.mutate(
       {
         data: {
-          ...data,
+          first_name: data.first_name,
+          surname: data.surname,
+          guardian_name: data.guardian_name,
+          date_of_birth: data.date_of_birth,
+          lga: data.lga,
+          village: data.village,
+          visible_marks: data.visible_marks ?? null,
+          gps_lat: gpsLat,
+          gps_lng: gpsLng,
           face_images: [faceImage],
-          gps_lat: gpsLat ?? undefined,
-          gps_lng: gpsLng ?? undefined,
-        } as any,
+        },
       },
       {
         onSuccess: () => {

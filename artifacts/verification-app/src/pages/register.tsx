@@ -164,6 +164,7 @@ export function Register() {
   if (step === "face") {
     return (
       <CameraCapture
+        key="face"
         title="Step 1 of 2 — Face Photo"
         subtitle="Look straight at the camera"
         overlayType="face"
@@ -175,6 +176,7 @@ export function Register() {
   if (step === "ear") {
     return (
       <CameraCapture
+        key="ear"
         title="Step 2 of 2 — Profile / Ear"
         subtitle="Turn the child's head to the side"
         overlayType="ear"

@@ -48,7 +48,8 @@ export function Verify() {
 
   if (step === "face") {
     return (
-      <CameraCapture 
+      <CameraCapture
+        key="face"
         title="1. Face Photo" 
         subtitle="Look straight at the camera" 
         overlayType="face" 
@@ -59,7 +60,8 @@ export function Verify() {
 
   if (step === "ear") {
     return (
-      <CameraCapture 
+      <CameraCapture
+        key="ear"
         title="2. Profile / Ear Photo" 
         subtitle="Turn head to the side" 
         overlayType="ear" 

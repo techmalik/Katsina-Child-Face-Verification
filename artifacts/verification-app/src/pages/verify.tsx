@@ -30,7 +30,7 @@ export function Verify() {
           const apiErr = err as { status?: number; data?: { error?: string; error_code?: string } };
           const msg = apiErr?.data?.error ?? "";
           const code = apiErr?.data?.error_code ?? "";
-          if (code === "quality_low" || code === "liveness_failed" || msg.includes("No face detected")) {
+          if (code === "quality_low" || msg.includes("No face detected")) {
             setQualityError(msg);
             setStep("quality_error");
           } else {

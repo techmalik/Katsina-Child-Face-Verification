@@ -186,15 +186,13 @@ router.post("/", async (req, res) => {
     })
     .returning();
 
-  // Store only threshold-passing frame embeddings to keep child_biometrics clean.
-  // passingFrames is guaranteed non-empty (checked above).
-  for (let idx = 0; idx < passingFrames.length; idx++) {
-    await pool.query(
-      `INSERT INTO child_biometrics (child_id, photo_index, modality, embedding)
-       VALUES ($1, $2, 'face', $3::vector)`,
-      [child.id, idx, vecStr(passingFrames[idx].embedding)],
-    );
-  }
+  // Store the averaged embedding (already computed and L2-normalised above).
+  // One canonical embedding per registration, free of per-frame noise.
+  await pool.query(
+    `INSERT INTO child_biometrics (child_id, photo_index, modality, embedding)
+     VALUES ($1, $2, 'face', $3::vector)`,
+    [child.id, 0, vecStr(avgEmb)],
+  );
 
   return res.status(201).json({
     ...child,

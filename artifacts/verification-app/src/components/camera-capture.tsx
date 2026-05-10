@@ -62,22 +62,45 @@ function getFrameBrightness(video: HTMLVideoElement): number {
   }
 }
 
-const OVAL = {
-  face: { w: 256, h: 320, dx: 0,  borderRadius: "50%" as const },
-  ear:  { w: 160, h: 256, dx: 32, borderRadius: "50%" as const },
+const OVAL_BASE = {
+  face: { w: 256, h: 320, dx: 0  },
+  ear:  { w: 160, h: 256, dx: 32 },
 } as const;
 
-function getClipPath(type: "face" | "ear"): string {
-  const { w, h, dx } = OVAL[type];
-  const rx = w / 2;
-  const ry = h / 2;
-  const cx = dx === 0 ? "50%" : `calc(50% + ${dx}px)`;
+interface OvalDims {
+  w: number;
+  h: number;
+  dx: number;
+  borderRadius: "50%";
+}
+
+function computeOval(overlayType: "face" | "ear"): OvalDims {
+  const base = OVAL_BASE[overlayType];
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  // Bottom bar ~100px, top header ~64px; leave 80% of remaining height
+  const availH = (vh - 164) * 0.80;
+  const scaleW = Math.min(1, (vw * 0.78) / base.w);
+  const scaleH = Math.min(1, availH / base.h);
+  const scale  = Math.min(scaleW, scaleH);
+  return {
+    w: Math.round(base.w * scale),
+    h: Math.round(base.h * scale),
+    dx: Math.round(base.dx * scale),
+    borderRadius: "50%",
+  };
+}
+
+function getClipPath(oval: OvalDims): string {
+  const rx = oval.w / 2;
+  const ry = oval.h / 2;
+  const cx = oval.dx === 0 ? "50%" : `calc(50% + ${oval.dx}px)`;
   return `ellipse(${rx}px ${ry}px at ${cx} 50%)`;
 }
 
 function computeCrop(
   video: HTMLVideoElement,
-  overlayType: "face" | "ear"
+  oval: OvalDims,
 ): { sx: number; sy: number; sw: number; sh: number } {
   const videoW = video.videoWidth  || 640;
   const videoH = video.videoHeight || 480;
@@ -88,7 +111,6 @@ function computeCrop(
   const offsetX = (videoW * scale - elemW) / 2;
   const offsetY = (videoH * scale - elemH) / 2;
 
-  const oval = OVAL[overlayType];
   const cx = elemW / 2 + oval.dx;
   const cy = elemH / 2;
 
@@ -118,6 +140,7 @@ export function CameraCapture({
   const brightnessIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const capturedFramesRef = useRef<string[]>([]);
 
+  const [oval] = useState<OvalDims>(() => computeOval(overlayType));
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [error,  setError]  = useState<string | null>(null);
   const [ready,  setReady]  = useState(false);
@@ -171,14 +194,14 @@ export function CameraCapture({
     const video  = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return null;
-    const { sx, sy, sw, sh } = computeCrop(video, overlayType);
+    const { sx, sy, sw, sh } = computeCrop(video, oval);
     canvas.width  = Math.max(1, Math.round(sw));
     canvas.height = Math.max(1, Math.round(sh));
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
     ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
     return canvas.toDataURL("image/jpeg", 0.85);
-  }, [overlayType]);
+  }, [oval]);
 
   const handleCapture = useCallback(async () => {
     if (!ready || capturing) return;
@@ -189,12 +212,10 @@ export function CameraCapture({
 
     const frames: string[] = [];
 
-    // Frame 1 — immediate
     const f1 = captureFrame();
     if (f1) frames.push(f1);
     setCountdown(FRAME_COUNT - 1);
 
-    // Remaining frames at FRAME_INTERVAL_MS intervals
     for (let i = 1; i < FRAME_COUNT; i++) {
       await new Promise<void>((r) => setTimeout(r, FRAME_INTERVAL_MS));
       const frame = captureFrame();
@@ -226,12 +247,10 @@ export function CameraCapture({
   const lightLevel: "good" | "dim" | "dark" =
     brightness >= 100 ? "good" : brightness >= 55 ? "dim" : "dark";
 
-  const oval = OVAL[overlayType];
-
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
       <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent z-10">
-        <h2 className="text-white text-xl font-bold text-center">{title}</h2>
+        <h2 className="text-white text-lg sm:text-xl font-bold text-center">{title}</h2>
         {subtitle && (
           <p className="text-white/70 text-center text-sm mt-1">{subtitle}</p>
         )}
@@ -268,7 +287,7 @@ export function CameraCapture({
               muted
               className="w-full h-full object-cover"
               style={ready
-                ? { clipPath: getClipPath(overlayType), transform: "scaleX(-1)" }
+                ? { clipPath: getClipPath(oval), transform: "scaleX(-1)" }
                 : { transform: "scaleX(-1)" }}
             />
             {ready && (
@@ -285,18 +304,17 @@ export function CameraCapture({
               </div>
             )}
 
-            {/* Countdown overlay shown while capturing multi-frame burst */}
             {capturing && countdown !== null && (
               <div className="absolute inset-0 flex flex-col items-center justify-center z-20 pointer-events-none">
-                <div className="bg-black/70 rounded-full w-24 h-24 flex items-center justify-center mb-3">
-                  <span className="text-white text-5xl font-black">{countdown}</span>
+                <div className="bg-black/70 rounded-full w-20 h-20 sm:w-24 sm:h-24 flex items-center justify-center mb-3">
+                  <span className="text-white text-4xl sm:text-5xl font-black">{countdown}</span>
                 </div>
-                <p className="text-white font-bold text-xl tracking-wide">Hold still…</p>
+                <p className="text-white font-bold text-lg sm:text-xl tracking-wide">Hold still…</p>
               </div>
             )}
 
             {ready && !capturing && (
-              <div className="absolute top-20 right-4 z-20 flex items-center gap-1.5 bg-black/60 rounded-full px-3 py-1.5 pointer-events-none">
+              <div className="absolute top-16 right-3 z-20 flex items-center gap-1.5 bg-black/60 rounded-full px-3 py-1.5 pointer-events-none">
                 {lightLevel === "good" ? (
                   <Sun className="w-4 h-4 text-green-400" />
                 ) : (
@@ -322,14 +340,14 @@ export function CameraCapture({
               size="lg"
               variant="outline"
               onClick={handleRetake}
-              className="flex-1 h-16 text-lg font-bold border-white/40 text-white hover:bg-white/10"
+              className="flex-1 h-14 sm:h-16 text-base sm:text-lg font-bold border-white/40 text-white hover:bg-white/10"
             >
               <RefreshCw className="mr-2 h-5 w-5" /> Retake
             </Button>
             <Button
               size="lg"
               onClick={handleConfirm}
-              className="flex-1 h-16 text-lg font-bold bg-primary hover:bg-primary/90 text-white"
+              className="flex-1 h-14 sm:h-16 text-base sm:text-lg font-bold bg-primary hover:bg-primary/90 text-white"
             >
               <Check className="mr-2 h-5 w-5" /> Use Photo
             </Button>
@@ -339,6 +357,7 @@ export function CameraCapture({
             onClick={handleCapture}
             disabled={!ready || capturing}
             className="w-20 h-20 rounded-full bg-white border-4 border-gray-400 flex items-center justify-center active:scale-95 transition-transform disabled:opacity-50"
+            aria-label="Capture photo"
           >
             <Camera className="h-8 w-8 text-black" />
           </button>

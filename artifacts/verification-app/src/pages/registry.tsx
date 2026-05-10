@@ -352,19 +352,21 @@ export function Registry() {
         </header>
 
         {/* Results list */}
-        <div className="flex-1 overflow-y-auto pb-4 space-y-2">
+        <div className="flex-1 overflow-y-auto pb-4">
           {isLoading ? (
-            Array.from({ length: 5 }).map((_, i) => (
-              <Card key={i} className="overflow-hidden">
-                <CardContent className="p-0 flex items-center h-20">
-                  <Skeleton className="w-20 h-20 rounded-none shrink-0" />
-                  <div className="p-4 flex-1 space-y-2">
-                    <Skeleton className="h-4 w-1/2" />
-                    <Skeleton className="h-3 w-1/3" />
-                  </div>
-                </CardContent>
-              </Card>
-            ))
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Card key={i} className="overflow-hidden">
+                  <CardContent className="p-0 flex items-center h-20">
+                    <Skeleton className="w-20 h-20 rounded-none shrink-0" />
+                    <div className="p-4 flex-1 space-y-2">
+                      <Skeleton className="h-4 w-1/2" />
+                      <Skeleton className="h-3 w-1/3" />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           ) : data?.children.length === 0 ? (
             <div className="text-center py-14 text-gray-500">
               <User className="w-14 h-14 mx-auto mb-3 text-gray-300" />
@@ -381,37 +383,39 @@ export function Registry() {
               )}
             </div>
           ) : (
-            data?.children.map((child) => (
-              <Link key={child.id} href={`/registry/${child.id}`}>
-                <Card className="overflow-hidden hover:bg-gray-50 transition-colors cursor-pointer border shadow-sm">
-                  <CardContent className="p-0 flex items-center h-20">
-                    {child.face_photo ? (
-                      <img
-                        src={child.face_photo}
-                        alt={child.first_name}
-                        className="w-20 h-20 object-cover bg-gray-200 shrink-0"
-                      />
-                    ) : (
-                      <div className="w-20 h-20 bg-gray-100 flex items-center justify-center shrink-0">
-                        <User className="w-8 h-8 text-gray-400" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {data?.children.map((child) => (
+                <Link key={child.id} href={`/registry/${child.id}`}>
+                  <Card className="overflow-hidden hover:bg-gray-50 transition-colors cursor-pointer border shadow-sm h-full">
+                    <CardContent className="p-0 flex items-center h-20">
+                      {child.face_photo ? (
+                        <img
+                          src={child.face_photo}
+                          alt={child.first_name}
+                          className="w-20 h-20 object-cover bg-gray-200 shrink-0"
+                        />
+                      ) : (
+                        <div className="w-20 h-20 bg-gray-100 flex items-center justify-center shrink-0">
+                          <User className="w-8 h-8 text-gray-400" />
+                        </div>
+                      )}
+                      <div className="px-4 flex-1 min-w-0">
+                        <h4 className="font-bold text-base text-gray-900 truncate">
+                          {child.first_name} {child.surname}
+                        </h4>
+                        <p className="text-gray-500 text-xs font-medium flex items-center gap-1 truncate mt-0.5">
+                          <MapPin className="w-3 h-3 shrink-0" />
+                          {child.village}, {child.lga}
+                        </p>
                       </div>
-                    )}
-                    <div className="px-4 flex-1 min-w-0">
-                      <h4 className="font-bold text-base text-gray-900 truncate">
-                        {child.first_name} {child.surname}
-                      </h4>
-                      <p className="text-gray-500 text-xs font-medium flex items-center gap-1 truncate mt-0.5">
-                        <MapPin className="w-3 h-3 shrink-0" />
-                        {child.village}, {child.lga}
-                      </p>
-                    </div>
-                    <div className="px-3 text-gray-400 shrink-0">
-                      <ChevronRight className="w-5 h-5" />
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))
+                      <div className="px-3 text-gray-400 shrink-0">
+                        <ChevronRight className="w-5 h-5" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
+            </div>
           )}
         </div>
       </div>

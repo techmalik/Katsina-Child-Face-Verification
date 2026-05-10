@@ -141,14 +141,30 @@ export function Register() {
     );
   };
 
-  const onInvalid = () => {
-    const firstError = document.querySelector<HTMLElement>("[data-invalid]");
-    if (firstError) {
-      firstError.scrollIntoView({ behavior: "smooth", block: "center" });
+  const onInvalid = (errors: Record<string, unknown>) => {
+    const fieldOrder = ["first_name", "surname", "guardian_name", "date_of_birth", "lga", "village"];
+    const missingLabels: Record<string, string> = {
+      first_name: "First Name",
+      surname: "Surname",
+      guardian_name: "Guardian Name",
+      date_of_birth: "Date of Birth",
+      lga: "LGA",
+      village: "Village",
+    };
+    const missing = fieldOrder
+      .filter((k) => errors[k])
+      .map((k) => missingLabels[k])
+      .slice(0, 2);
+
+    const firstInvalid = document.querySelector<HTMLElement>('[aria-invalid="true"]');
+    if (firstInvalid) {
+      firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
     } else {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
-    toast.error("Please fill in all required fields before submitting.");
+
+    const detail = missing.length > 0 ? `: ${missing.join(", ")}` : "";
+    toast.error(`Please fill in all required fields${detail}.`);
   };
 
   const onSubmit = (data: FormValues) => {

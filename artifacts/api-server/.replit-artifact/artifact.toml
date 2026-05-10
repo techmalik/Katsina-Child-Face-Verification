@@ -21,12 +21,14 @@ args = ["pnpm", "--filter", "@workspace/api-server", "run", "build"]
 NODE_ENV = "production"
 
 [services.production.run]
-# we don't run through pnpm to make startup faster in production
-args = ["node", "--enable-source-maps", "artifacts/api-server/dist/index.mjs"]
+# Launches the Python face embedding service on port 8001 in the background,
+# then exec's into the Node API server so it owns the process slot.
+args = ["bash", "artifacts/face-service/start-with-api.sh"]
 
 [services.production.run.env]
 PORT = "8080"
 NODE_ENV = "production"
+FACE_SERVICE_URL = "http://localhost:8001"
 
 [services.production.health.startup]
 path = "/api/healthz"

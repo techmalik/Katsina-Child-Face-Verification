@@ -251,21 +251,21 @@ export function Registry() {
                 <Badge
                   key={f.key}
                   variant="secondary"
-                  className="flex items-center gap-1 pr-1 text-xs font-semibold"
+                  className="flex items-center gap-1 pr-1 text-xs font-semibold min-h-[48px] px-3"
                 >
                   {f.label}
                   <button
                     onClick={() => setParam(f.key, "")}
-                    className="ml-0.5 rounded-full hover:bg-gray-300 p-0.5"
+                    className="ml-0.5 rounded-full hover:bg-gray-300 min-h-[40px] min-w-[40px] flex items-center justify-center"
                     aria-label={`Remove ${f.label} filter`}
                   >
-                    <X className="w-2.5 h-2.5" />
+                    <X className="w-3 h-3" />
                   </button>
                 </Badge>
               ))}
               <button
                 onClick={clearAllFilters}
-                className="text-xs font-semibold text-destructive hover:underline"
+                className="text-xs font-semibold text-destructive hover:underline min-h-[48px] px-2 flex items-center"
               >
                 Clear all
               </button>

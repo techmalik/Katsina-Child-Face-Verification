@@ -1,0 +1,24 @@
+kind = "api"
+previewPath = "/face-api"
+title = "Face Embedding Service"
+version = "1.0.0"
+
+[[services]]
+localPort = 8001
+name = "Face Embedding Service"
+paths = ["/face-api"]
+
+[services.development]
+run = "cd artifacts/face-service && python3 -m uvicorn main:app --host 0.0.0.0 --port 8001"
+
+[services.production]
+
+[services.production.run]
+args = ["python3", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
+workingDir = "artifacts/face-service"
+
+[services.production.run.env]
+PORT = "8001"
+
+[services.production.health.startup]
+path = "/face-api/health"

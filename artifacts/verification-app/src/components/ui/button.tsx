@@ -28,11 +28,11 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
-        // @replit changed sizes
-        default: "min-h-9 px-4 py-2",
-        sm: "min-h-8 rounded-md px-3 text-xs",
-        lg: "min-h-10 rounded-md px-8",
-        icon: "h-9 w-9",
+        // @replit mobile-first: all interactive elements ≥48px touch target
+        default: "min-h-12 px-4 py-2",
+        sm: "min-h-12 rounded-md px-3 text-xs",
+        lg: "min-h-12 rounded-md px-8",
+        icon: "size-12",
       },
     },
     defaultVariants: {

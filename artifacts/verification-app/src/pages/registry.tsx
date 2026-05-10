@@ -206,13 +206,13 @@ export function Registry() {
                 placeholder="Search by name…"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                className="pl-10 h-11 text-base font-medium shadow-sm bg-white"
+                className="pl-10 h-12 text-base font-medium shadow-sm bg-white"
               />
             </div>
 
             {/* Sort */}
             <Select value={sortVal} onValueChange={(v) => setParam("sort", v)}>
-              <SelectTrigger className="h-11 w-auto min-w-[44px] gap-1 px-3 bg-white shadow-sm">
+              <SelectTrigger className="h-12 w-auto min-w-[48px] gap-1 px-3 bg-white shadow-sm">
                 <ArrowUpDown className="w-4 h-4 text-gray-500 shrink-0" />
                 <span className="hidden sm:inline text-sm font-medium truncate max-w-[130px]">
                   {SORT_OPTIONS.find((o) => o.value === sortVal)?.label ?? "Sort"}
@@ -231,7 +231,7 @@ export function Registry() {
             <Button
               variant="outline"
               size="icon"
-              className="h-11 w-11 bg-white shadow-sm relative shrink-0"
+              className="h-12 w-12 bg-white shadow-sm relative shrink-0"
               onClick={() => setFiltersOpen((v) => !v)}
               aria-label="Toggle filters"
             >
@@ -281,7 +281,8 @@ export function Registry() {
                 </p>
                 <button
                   onClick={() => setFiltersOpen(false)}
-                  className="text-gray-400 hover:text-gray-600 p-1 rounded"
+                  className="text-gray-400 hover:text-gray-600 p-2 rounded min-h-[48px] min-w-[48px] flex items-center justify-center"
+                  aria-label="Close filters"
                 >
                   <ChevronUp className="w-4 h-4" />
                 </button>

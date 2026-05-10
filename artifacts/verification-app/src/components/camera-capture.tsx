@@ -1,12 +1,60 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Camera, RefreshCw, Check } from "lucide-react";
+import { Camera, RefreshCw, Check, Sun, SunDim } from "lucide-react";
 
 interface CameraCaptureProps {
   onCapture: (base64Image: string) => void;
   overlayType?: "face" | "ear";
   title?: string;
   subtitle?: string;
+}
+
+function playBeep(type: "shutter" | "success") {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx() as AudioContext;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    if (type === "shutter") {
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.15);
+    } else {
+      osc.frequency.setValueAtTime(660, ctx.currentTime);
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.3);
+    }
+    osc.onended = () => ctx.close();
+  } catch {
+    // Audio not supported — silently ignore
+  }
+}
+
+function getFrameBrightness(video: HTMLVideoElement): number {
+  try {
+    const cvs = document.createElement("canvas");
+    cvs.width = 40;
+    cvs.height = 30;
+    const ctx = cvs.getContext("2d");
+    if (!ctx) return 128;
+    ctx.drawImage(video, 0, 0, 40, 30);
+    const { data } = ctx.getImageData(0, 0, 40, 30);
+    let sum = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      sum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    }
+    return sum / (data.length / 4);
+  } catch {
+    return 128;
+  }
 }
 
 export function CameraCapture({
@@ -18,14 +66,20 @@ export function CameraCapture({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const brightnessIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [brightness, setBrightness] = useState<number>(128);
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
+    }
+    if (brightnessIntervalRef.current) {
+      clearInterval(brightnessIntervalRef.current);
+      brightnessIntervalRef.current = null;
     }
   }, []);
 
@@ -39,7 +93,14 @@ export function CameraCapture({
       streamRef.current = ms;
       if (videoRef.current) {
         videoRef.current.srcObject = ms;
-        videoRef.current.onloadedmetadata = () => setReady(true);
+        videoRef.current.onloadedmetadata = () => {
+          setReady(true);
+          brightnessIntervalRef.current = setInterval(() => {
+            if (videoRef.current) {
+              setBrightness(getFrameBrightness(videoRef.current));
+            }
+          }, 1000);
+        };
       }
     } catch {
       setError("Failed to access camera. Please check permissions.");
@@ -63,6 +124,7 @@ export function CameraCapture({
     const base64 = canvas.toDataURL("image/jpeg", 0.85);
     setCapturedImage(base64);
     stopCamera();
+    playBeep("shutter");
   };
 
   const handleRetake = () => {
@@ -71,8 +133,14 @@ export function CameraCapture({
   };
 
   const handleConfirm = () => {
-    if (capturedImage) onCapture(capturedImage);
+    if (capturedImage) {
+      playBeep("success");
+      onCapture(capturedImage);
+    }
   };
+
+  const lightLevel: "good" | "dim" | "dark" =
+    brightness >= 100 ? "good" : brightness >= 55 ? "dim" : "dark";
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
@@ -117,6 +185,22 @@ export function CameraCapture({
                 )}
               </div>
             )}
+
+            {ready && (
+              <div className="absolute top-20 right-4 z-20 flex items-center gap-1.5 bg-black/60 rounded-full px-3 py-1.5 pointer-events-none">
+                {lightLevel === "good" ? (
+                  <Sun className="w-4 h-4 text-green-400" />
+                ) : (
+                  <SunDim className={`w-4 h-4 ${lightLevel === "dim" ? "text-yellow-400" : "text-red-400"}`} />
+                )}
+                <span className={`text-xs font-bold ${
+                  lightLevel === "good" ? "text-green-400" :
+                  lightLevel === "dim" ? "text-yellow-400" : "text-red-400"
+                }`}>
+                  {lightLevel === "good" ? "Good light" : lightLevel === "dim" ? "Low light" : "Too dark"}
+                </span>
+              </div>
+            )}
           </>
         )}
         <canvas ref={canvasRef} className="hidden" />
@@ -144,7 +228,8 @@ export function CameraCapture({
         ) : (
           <button
             onClick={handleCapture}
-            className="w-20 h-20 rounded-full bg-white border-4 border-gray-400 flex items-center justify-center active:scale-95 transition-transform"
+            disabled={!ready}
+            className="w-20 h-20 rounded-full bg-white border-4 border-gray-400 flex items-center justify-center active:scale-95 transition-transform disabled:opacity-50"
           >
             <Camera className="h-8 w-8 text-black" />
           </button>

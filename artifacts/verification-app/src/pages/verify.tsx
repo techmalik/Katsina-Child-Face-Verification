@@ -92,17 +92,17 @@ export function Verify() {
   let message = "Could not complete verification. Try again.";
 
   if (status === "match") {
-    bgColor = "bg-success";
+    bgColor = "bg-destructive";
     icon = <XCircle className="w-32 h-32 text-white mb-8" />;
     title = "ALREADY VERIFIED";
     message = "STOP. This child has already been registered and verified.";
   } else if (status === "new") {
-    bgColor = "bg-destructive"; // RED
+    bgColor = "bg-success";
     icon = <CheckCircle className="w-32 h-32 text-white mb-8" />;
     title = "NEW CHILD";
     message = "Child not found in database. Proceed to register.";
   } else if (status === "review") {
-    bgColor = "bg-warning"; // AMBER
+    bgColor = "bg-warning";
     icon = <AlertTriangle className="w-32 h-32 text-white mb-8" />;
     title = "NEEDS REVIEW";
     message = "Match uncertain. Escalated to supervisor.";

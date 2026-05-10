@@ -499,7 +499,7 @@ export function Register() {
                       </FormControl>
                       <SelectContent>
                         {lgas?.map((lga) => (
-                          <SelectItem key={lga.code} value={lga.code} className="text-lg py-3">
+                          <SelectItem key={lga.code} value={lga.name} className="text-lg py-3">
                             {lga.name}
                           </SelectItem>
                         ))}

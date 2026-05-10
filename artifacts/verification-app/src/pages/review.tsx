@@ -59,7 +59,7 @@ export function Review() {
               <Card key={item.verification_id} className="overflow-hidden border-2 shadow-md">
                 <div className="bg-gray-100 p-4 border-b flex justify-between items-center">
                   <div className="flex items-center gap-2 text-warning font-bold">
-                    <AlertTriangle className="w-5 h-5" /> Uncertain Match ({(item.fused_score || 0 * 100).toFixed(0)}%)
+                    <AlertTriangle className="w-5 h-5" /> Uncertain Match ({((item.fused_score ?? 0) * 100).toFixed(0)}%)
                   </div>
                   <span className="text-sm font-bold text-gray-500">ID: {item.verification_id}</span>
                 </div>

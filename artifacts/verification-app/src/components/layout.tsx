@@ -1,5 +1,6 @@
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Shield, Home, Users, History, ClipboardCheck } from "lucide-react";
+import { Shield, Home, Users, History, ClipboardCheck, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface LayoutProps {
@@ -8,6 +9,18 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
 
   const navItems = [
     { href: "/", icon: Home, label: "Home" },
@@ -18,8 +31,18 @@ export function Layout({ children }: LayoutProps) {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
+      {!isOnline && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-red-600 text-white px-4 py-3 flex items-center justify-center gap-2 shadow-lg">
+          <WifiOff className="w-5 h-5 shrink-0" />
+          <span className="font-bold text-sm">No internet — cannot verify. Check your connection.</span>
+        </div>
+      )}
+
       {/* Mobile Header */}
-      <header className="md:hidden bg-primary text-white p-4 flex items-center gap-3 sticky top-0 z-30 shadow-md">
+      <header className={cn(
+        "md:hidden bg-primary text-white p-4 flex items-center gap-3 sticky z-30 shadow-md",
+        isOnline ? "top-0" : "top-12"
+      )}>
         <Shield className="w-8 h-8" />
         <div>
           <h1 className="font-bold text-lg leading-tight">Katsina State</h1>
@@ -28,7 +51,10 @@ export function Layout({ children }: LayoutProps) {
       </header>
 
       {/* Sidebar (Desktop) */}
-      <aside className="hidden md:flex w-64 bg-primary text-white flex-col sticky top-0 h-screen">
+      <aside className={cn(
+        "hidden md:flex w-64 bg-primary text-white flex-col sticky h-screen",
+        isOnline ? "top-0" : "top-12"
+      )}>
         <div className="p-6 flex items-center gap-3 border-b border-white/10">
           <Shield className="w-10 h-10" />
           <div>
@@ -57,7 +83,10 @@ export function Layout({ children }: LayoutProps) {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 pb-20 md:pb-0 relative flex flex-col min-h-[100dvh] md:min-h-screen max-w-3xl mx-auto md:max-w-none w-full">
+      <main className={cn(
+        "flex-1 pb-20 md:pb-0 relative flex flex-col min-h-[100dvh] md:min-h-screen max-w-3xl mx-auto md:max-w-none w-full",
+        !isOnline && "mt-12 md:mt-12"
+      )}>
         {children}
       </main>
 

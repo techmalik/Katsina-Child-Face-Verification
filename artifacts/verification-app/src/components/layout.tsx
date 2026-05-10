@@ -76,7 +76,7 @@ export function Layout({ children }: LayoutProps) {
       >
         <button
           onClick={() => setDrawerOpen(true)}
-          className="p-2 -ml-2 rounded-lg hover:bg-white/10 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+          className="p-2 -ml-2 rounded-lg hover:bg-white/10 transition-colors min-h-[48px] min-w-[48px] flex items-center justify-center"
           aria-label="Open menu"
         >
           <Menu className="w-6 h-6" />
@@ -118,7 +118,7 @@ export function Layout({ children }: LayoutProps) {
           </div>
           <button
             onClick={() => setDrawerOpen(false)}
-            className="p-2 rounded-lg hover:bg-white/10 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+            className="p-2 rounded-lg hover:bg-white/10 transition-colors min-h-[48px] min-w-[48px] flex items-center justify-center"
             aria-label="Close menu"
           >
             <X className="w-5 h-5" />
@@ -159,7 +159,7 @@ export function Layout({ children }: LayoutProps) {
       {/* Main Content */}
       <main
         className={cn(
-          "flex-1 pb-20 md:pb-0 relative flex flex-col min-h-[100dvh] md:min-h-screen w-full overflow-x-hidden",
+          "flex-1 pb-20 md:pb-0 relative flex flex-col min-h-[100dvh] md:min-h-screen w-full overflow-x-hidden max-w-full",
           !isOnline && "mt-12 md:mt-12",
         )}
       >

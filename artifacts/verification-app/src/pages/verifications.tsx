@@ -99,7 +99,7 @@ export function Verifications() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="border-destructive text-destructive hover:bg-destructive hover:text-white shrink-0 min-h-[44px]"
+                  className="border-destructive text-destructive hover:bg-destructive hover:text-white shrink-0 min-h-[48px]"
                 >
                   <Trash2 className="w-4 h-4 mr-1.5" />
                   <span className="hidden sm:inline">Clear All Logs</span>

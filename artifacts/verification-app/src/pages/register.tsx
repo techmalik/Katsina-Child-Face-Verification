@@ -497,7 +497,7 @@ export function Register() {
   /* ── New child — registration form ─────────────────────────────── */
   return (
     <Layout>
-      <div className="p-4 md:p-8 max-w-2xl mx-auto w-full">
+      <div className="p-4 md:p-8 max-w-2xl mx-auto w-full overflow-x-hidden">
         <header className="mb-6">
           <div className="bg-blue-600 text-white rounded-xl p-3 flex items-center gap-3 mb-4 shadow">
             <CheckCircle2 className="w-7 h-7 shrink-0" />

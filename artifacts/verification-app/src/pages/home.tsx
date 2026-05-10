@@ -14,7 +14,7 @@ export function Home() {
 
   return (
     <Layout>
-      <div className="p-4 md:p-8 space-y-5 max-w-4xl mx-auto w-full">
+      <div className="p-4 md:p-8 space-y-5 max-w-4xl mx-auto w-full overflow-x-hidden">
         {/* Katsina State hero banner */}
         <div className="relative bg-primary rounded-2xl overflow-hidden shadow-lg">
           <div className="absolute inset-0 flex items-center justify-end pr-4 opacity-10 pointer-events-none select-none">

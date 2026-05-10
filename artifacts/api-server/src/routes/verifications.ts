@@ -103,6 +103,11 @@ router.get("/", async (req, res) => {
   });
 });
 
+router.delete("/", async (_req, res) => {
+  const result = await pool.query("DELETE FROM verifications");
+  return res.json({ deleted: result.rowCount ?? 0 });
+});
+
 router.patch("/:id/review", async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });

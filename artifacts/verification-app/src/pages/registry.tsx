@@ -1,83 +1,350 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { useListChildren, getListChildrenQueryKey } from "@workspace/api-client-react";
+import {
+  useListChildren,
+  getListChildrenQueryKey,
+  useListLgas,
+  getListLgasQueryKey,
+} from "@workspace/api-client-react";
 import { Layout } from "@/components/layout";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, MapPin, User, ChevronRight } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Search,
+  MapPin,
+  User,
+  ChevronRight,
+  Filter,
+  X,
+  ArrowUpDown,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
+
+const SORT_OPTIONS = [
+  { value: "created_at-desc", label: "Newest first" },
+  { value: "created_at-asc", label: "Oldest first" },
+  { value: "name-asc", label: "Name A–Z" },
+  { value: "name-desc", label: "Name Z–A" },
+  { value: "verification_count-desc", label: "Most verified" },
+  { value: "lga-asc", label: "LGA A–Z" },
+  { value: "date_of_birth-asc", label: "Youngest first" },
+  { value: "date_of_birth-desc", label: "Oldest first (age)" },
+];
 
 export function Registry() {
   const [search, setSearch] = useState("");
-  const debouncedSearch = useDebounce(search, 300);
+  const [filterLga, setFilterLga] = useState("");
+  const [dobFrom, setDobFrom] = useState("");
+  const [dobTo, setDobTo] = useState("");
+  const [regFrom, setRegFrom] = useState("");
+  const [regTo, setRegTo] = useState("");
+  const [sort, setSort] = useState("created_at-desc");
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const { data, isLoading } = useListChildren({
+  const debouncedSearch = useDebounce(search, 300);
+  const { data: lgas } = useListLgas({ query: { queryKey: getListLgasQueryKey() } });
+
+  const [sortBy, sortDir] = sort.split("-") as [string, string];
+
+  const params = {
     search: debouncedSearch || undefined,
-    limit: 50
-  }, {
-    query: { queryKey: getListChildrenQueryKey({ search: debouncedSearch || undefined, limit: 50 }) }
+    lga: filterLga || undefined,
+    dob_from: dobFrom || undefined,
+    dob_to: dobTo || undefined,
+    registered_from: regFrom || undefined,
+    registered_to: regTo || undefined,
+    sort_by: sortBy,
+    sort_dir: sortDir,
+    limit: 50,
+  };
+
+  const { data, isLoading } = useListChildren(params, {
+    query: { queryKey: getListChildrenQueryKey(params) },
   });
+
+  const activeFilters: { label: string; clear: () => void }[] = [
+    ...(filterLga ? [{ label: `LGA: ${filterLga}`, clear: () => setFilterLga("") }] : []),
+    ...(dobFrom ? [{ label: `DOB from: ${dobFrom}`, clear: () => setDobFrom("") }] : []),
+    ...(dobTo ? [{ label: `DOB to: ${dobTo}`, clear: () => setDobTo("") }] : []),
+    ...(regFrom ? [{ label: `Registered from: ${regFrom}`, clear: () => setRegFrom("") }] : []),
+    ...(regTo ? [{ label: `Registered to: ${regTo}`, clear: () => setRegTo("") }] : []),
+  ];
+
+  const clearAllFilters = () => {
+    setFilterLga("");
+    setDobFrom("");
+    setDobTo("");
+    setRegFrom("");
+    setRegTo("");
+  };
 
   return (
     <Layout>
-      <div className="p-4 md:p-8 max-w-4xl mx-auto w-full flex flex-col h-full">
-        <header className="mb-6 shrink-0">
-          <h2 className="text-3xl font-black text-gray-900 tracking-tight">Registry</h2>
-          <p className="text-gray-600 font-medium mb-4">Database of all registered children</p>
-          
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-6 h-6" />
-            <Input 
-              placeholder="Search by name..." 
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-12 h-14 text-lg font-medium shadow-sm bg-white"
-            />
+      <div className="p-4 md:p-6 max-w-4xl mx-auto w-full flex flex-col h-full">
+        <header className="mb-4 shrink-0">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">
+              Registry
+            </h2>
+            {data && (
+              <span className="text-sm font-semibold text-gray-500">
+                {data.total} record{data.total !== 1 ? "s" : ""}
+              </span>
+            )}
           </div>
+          <p className="text-gray-600 font-medium text-sm mb-3">
+            Database of all registered children
+          </p>
+
+          {/* Search + controls row */}
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <Input
+                placeholder="Search by name…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-10 h-11 text-base font-medium shadow-sm bg-white"
+              />
+            </div>
+
+            {/* Sort */}
+            <Select value={sort} onValueChange={setSort}>
+              <SelectTrigger className="h-11 w-auto min-w-[44px] gap-1 px-3 bg-white shadow-sm">
+                <ArrowUpDown className="w-4 h-4 text-gray-500 shrink-0" />
+                <span className="hidden sm:inline text-sm font-medium truncate max-w-[120px]">
+                  {SORT_OPTIONS.find((o) => o.value === sort)?.label ?? "Sort"}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {SORT_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Filter toggle */}
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-11 w-11 bg-white shadow-sm relative shrink-0"
+              onClick={() => setFiltersOpen((v) => !v)}
+              aria-label="Toggle filters"
+            >
+              <Filter className="w-4 h-4" />
+              {activeFilters.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-primary text-white text-[10px] font-black flex items-center justify-center">
+                  {activeFilters.length}
+                </span>
+              )}
+            </Button>
+          </div>
+
+          {/* Filter panel */}
+          {filtersOpen && (
+            <div className="mt-3 p-4 bg-white border border-gray-200 rounded-xl shadow-sm space-y-3">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
+                  <Filter className="w-3.5 h-3.5" /> Filters
+                </p>
+                <button
+                  onClick={() => setFiltersOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 p-1"
+                >
+                  <ChevronUp className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* LGA filter */}
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">
+                  LGA
+                </label>
+                <Select
+                  value={filterLga || "__all__"}
+                  onValueChange={(v) => setFilterLga(v === "__all__" ? "" : v)}
+                >
+                  <SelectTrigger className="h-10 bg-gray-50">
+                    <SelectValue placeholder="All LGAs" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All LGAs</SelectItem>
+                    {lgas?.map((lga) => (
+                      <SelectItem key={lga.code} value={lga.name}>
+                        {lga.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* DOB range */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">
+                    Date of Birth — From
+                  </label>
+                  <Input
+                    type="date"
+                    value={dobFrom}
+                    onChange={(e) => setDobFrom(e.target.value)}
+                    className="h-10 bg-gray-50 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">
+                    Date of Birth — To
+                  </label>
+                  <Input
+                    type="date"
+                    value={dobTo}
+                    onChange={(e) => setDobTo(e.target.value)}
+                    className="h-10 bg-gray-50 text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Registration date range */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">
+                    Registered — From
+                  </label>
+                  <Input
+                    type="date"
+                    value={regFrom}
+                    onChange={(e) => setRegFrom(e.target.value)}
+                    className="h-10 bg-gray-50 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">
+                    Registered — To
+                  </label>
+                  <Input
+                    type="date"
+                    value={regTo}
+                    onChange={(e) => setRegTo(e.target.value)}
+                    className="h-10 bg-gray-50 text-sm"
+                  />
+                </div>
+              </div>
+
+              {activeFilters.length > 0 && (
+                <div className="pt-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearAllFilters}
+                    className="text-destructive hover:text-destructive text-xs h-8 px-2"
+                  >
+                    <X className="w-3 h-3 mr-1" /> Clear all filters
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Active filter chips */}
+          {activeFilters.length > 0 && !filtersOpen && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {activeFilters.map((f, i) => (
+                <Badge
+                  key={i}
+                  variant="secondary"
+                  className="flex items-center gap-1 pr-1.5 text-xs font-semibold"
+                >
+                  {f.label}
+                  <button
+                    onClick={f.clear}
+                    className="ml-0.5 rounded-full hover:bg-gray-300 p-0.5"
+                    aria-label={`Remove ${f.label} filter`}
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                </Badge>
+              ))}
+              <button
+                onClick={clearAllFilters}
+                className="text-xs font-semibold text-destructive hover:underline"
+              >
+                Clear all
+              </button>
+            </div>
+          )}
         </header>
 
-        <div className="flex-1 overflow-y-auto pb-4 space-y-3">
+        <div className="flex-1 overflow-y-auto pb-4 space-y-2">
           {isLoading ? (
             Array.from({ length: 5 }).map((_, i) => (
               <Card key={i} className="overflow-hidden">
-                <CardContent className="p-0 flex items-center h-24">
-                  <Skeleton className="w-24 h-24 rounded-none" />
+                <CardContent className="p-0 flex items-center h-20">
+                  <Skeleton className="w-20 h-20 rounded-none shrink-0" />
                   <div className="p-4 flex-1 space-y-2">
-                    <Skeleton className="h-5 w-1/2" />
-                    <Skeleton className="h-4 w-1/3" />
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-3 w-1/3" />
                   </div>
                 </CardContent>
               </Card>
             ))
           ) : data?.children.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
-              <User className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="text-xl font-bold text-gray-900">No records found</h3>
-              <p>Try adjusting your search</p>
+              <User className="w-14 h-14 mx-auto mb-3 text-gray-300" />
+              <h3 className="text-lg font-bold text-gray-900">No records found</h3>
+              <p className="text-sm">
+                {activeFilters.length > 0 ? "Try adjusting or clearing your filters" : "Try a different search"}
+              </p>
+              {activeFilters.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearAllFilters}
+                  className="mt-3"
+                >
+                  Clear filters
+                </Button>
+              )}
             </div>
           ) : (
             data?.children.map((child) => (
               <Link key={child.id} href={`/registry/${child.id}`}>
                 <Card className="overflow-hidden hover:bg-gray-50 transition-colors cursor-pointer border shadow-sm">
-                  <CardContent className="p-0 flex items-center h-24">
+                  <CardContent className="p-0 flex items-center h-20">
                     {child.face_photo ? (
-                      <img src={child.face_photo} alt={child.first_name} className="w-24 h-24 object-cover bg-gray-200 shrink-0" />
+                      <img
+                        src={child.face_photo}
+                        alt={child.first_name}
+                        className="w-20 h-20 object-cover bg-gray-200 shrink-0"
+                      />
                     ) : (
-                      <div className="w-24 h-24 bg-gray-200 flex items-center justify-center shrink-0">
-                        <User className="w-10 h-10 text-gray-400" />
+                      <div className="w-20 h-20 bg-gray-100 flex items-center justify-center shrink-0">
+                        <User className="w-8 h-8 text-gray-400" />
                       </div>
                     )}
-                    <div className="p-4 flex-1 min-w-0">
-                      <h4 className="font-bold text-lg text-gray-900 truncate">
+                    <div className="px-4 flex-1 min-w-0">
+                      <h4 className="font-bold text-base text-gray-900 truncate">
                         {child.first_name} {child.surname}
                       </h4>
-                      <p className="text-gray-500 text-sm font-medium flex items-center gap-1 truncate mt-1">
+                      <p className="text-gray-500 text-xs font-medium flex items-center gap-1 truncate mt-0.5">
                         <MapPin className="w-3 h-3 shrink-0" /> {child.village}, {child.lga}
                       </p>
                     </div>
-                    <div className="p-4 text-gray-400 shrink-0">
-                      <ChevronRight className="w-6 h-6" />
+                    <div className="px-3 text-gray-400 shrink-0">
+                      <ChevronRight className="w-5 h-5" />
                     </div>
                   </CardContent>
                 </Card>

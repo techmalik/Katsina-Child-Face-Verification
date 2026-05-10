@@ -216,6 +216,30 @@ export type ListChildrenParams = {
    */
   search?: string;
   /**
+   * Filter by minimum date of birth (YYYY-MM-DD)
+   */
+  dob_from?: string;
+  /**
+   * Filter by maximum date of birth (YYYY-MM-DD)
+   */
+  dob_to?: string;
+  /**
+   * Filter by registration start date (YYYY-MM-DD)
+   */
+  registered_from?: string;
+  /**
+   * Filter by registration end date (YYYY-MM-DD)
+   */
+  registered_to?: string;
+  /**
+   * Sort column: name | created_at | verification_count | lga | date_of_birth
+   */
+  sort_by?: string;
+  /**
+   * Sort direction: asc | desc
+   */
+  sort_dir?: string;
+  /**
    * @maximum 200
    */
   limit?: number;

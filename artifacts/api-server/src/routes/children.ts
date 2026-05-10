@@ -5,8 +5,16 @@ import { eq } from "drizzle-orm";
 const router = Router();
 const FACE_SERVICE_URL = process.env.FACE_SERVICE_URL ?? "http://localhost:8000";
 const THRESHOLD_DUPLICATE = 0.38;
-const DET_THRESHOLD = 0.6;     // InsightFace SCRFD detection confidence gate
-const LIVENESS_THRESHOLD = 0.5; // Combined temporal-variance + quality liveness gate
+const DET_THRESHOLD = 0.6;
+const LIVENESS_THRESHOLD = 0.5;
+
+const SORT_COLUMNS: Record<string, string> = {
+  name: "(c.first_name || ' ' || c.surname)",
+  created_at: "c.created_at",
+  verification_count: "(SELECT COUNT(*) FROM verifications v2 WHERE v2.child_id = c.id)",
+  lga: "c.lga",
+  date_of_birth: "c.date_of_birth",
+};
 
 function vecStr(v: number[]): string {
   return `[${v.join(",")}]`;
@@ -18,15 +26,44 @@ function l2normalize(v: number[]): number[] {
 }
 
 router.get("/", async (req, res) => {
-  const { lga, village, search, limit = "50", offset = "0" } = req.query as Record<string, string>;
+  const {
+    lga,
+    village,
+    search,
+    limit = "50",
+    offset = "0",
+    dob_from,
+    dob_to,
+    registered_from,
+    registered_to,
+    sort_by = "created_at",
+    sort_dir = "desc",
+  } = req.query as Record<string, string>;
+
+  const col = SORT_COLUMNS[sort_by] ?? "c.created_at";
+  const dir = sort_dir === "asc" ? "ASC" : "DESC";
+
+  const filterParams = [
+    lga ?? null,
+    village ?? null,
+    search ?? null,
+    dob_from ?? null,
+    dob_to ?? null,
+    registered_from ? new Date(registered_from).toISOString() : null,
+    registered_to ? new Date(registered_to + "T23:59:59Z").toISOString() : null,
+  ];
 
   const [countRow, dataRows] = await Promise.all([
     pool.query<{ count: string }>(
-      `SELECT COUNT(*)::text FROM children
-       WHERE ($1::text IS NULL OR lga = $1)
-         AND ($2::text IS NULL OR village ILIKE '%' || $2 || '%')
-         AND ($3::text IS NULL OR (first_name || ' ' || surname) ILIKE '%' || $3 || '%')`,
-      [lga ?? null, village ?? null, search ?? null],
+      `SELECT COUNT(*)::text FROM children c
+       WHERE ($1::text IS NULL OR c.lga = $1)
+         AND ($2::text IS NULL OR c.village ILIKE '%' || $2 || '%')
+         AND ($3::text IS NULL OR (c.first_name || ' ' || c.surname) ILIKE '%' || $3 || '%')
+         AND ($4::text IS NULL OR c.date_of_birth::date >= $4::date)
+         AND ($5::text IS NULL OR c.date_of_birth::date <= $5::date)
+         AND ($6::text IS NULL OR c.created_at >= $6::timestamptz)
+         AND ($7::text IS NULL OR c.created_at <= $7::timestamptz)`,
+      filterParams,
     ),
     pool.query(
       `SELECT c.*,
@@ -35,9 +72,13 @@ router.get("/", async (req, res) => {
        WHERE ($1::text IS NULL OR c.lga = $1)
          AND ($2::text IS NULL OR c.village ILIKE '%' || $2 || '%')
          AND ($3::text IS NULL OR (c.first_name || ' ' || c.surname) ILIKE '%' || $3 || '%')
-       ORDER BY c.created_at DESC
-       LIMIT $4 OFFSET $5`,
-      [lga ?? null, village ?? null, search ?? null, parseInt(limit), parseInt(offset)],
+         AND ($4::text IS NULL OR c.date_of_birth::date >= $4::date)
+         AND ($5::text IS NULL OR c.date_of_birth::date <= $5::date)
+         AND ($6::text IS NULL OR c.created_at >= $6::timestamptz)
+         AND ($7::text IS NULL OR c.created_at <= $7::timestamptz)
+       ORDER BY ${col} ${dir}
+       LIMIT $8 OFFSET $9`,
+      [...filterParams, parseInt(limit), parseInt(offset)],
     ),
   ]);
 
@@ -91,7 +132,6 @@ router.post("/", async (req, res) => {
     return res.status(503).json({ error: `Face service unavailable: ${err.message}` });
   }
 
-  // Collect valid frames
   const validFrames = embResult.face_detected
     .map((detected, i) => ({
       detected,
@@ -107,7 +147,6 @@ router.post("/", async (req, res) => {
       .json({ error: "No face detected in the face photo. Please retake in good light." });
   }
 
-  // Gate 1 — detection confidence (InsightFace SCRFD score)
   const passingDet = validFrames.filter((f) => f.det >= DET_THRESHOLD);
   if (passingDet.length === 0) {
     return res.status(400).json({
@@ -116,7 +155,6 @@ router.post("/", async (req, res) => {
     });
   }
 
-  // Gate 2 — liveness (inter-frame ArcFace temporal variance + ONNX quality)
   const passingFrames = passingDet.filter((f) => f.liveness >= LIVENESS_THRESHOLD);
   if (passingFrames.length === 0) {
     return res.status(400).json({
@@ -125,13 +163,11 @@ router.post("/", async (req, res) => {
     });
   }
 
-  // Average only threshold-passing embeddings for stable duplicate check
   const avgRaw = passingFrames[0].embedding.map((_, j) =>
     passingFrames.reduce((s, f) => s + f.embedding[j], 0) / passingFrames.length,
   );
   const avgEmb = l2normalize(avgRaw);
 
-  // Duplicate check using averaged embedding
   const candidates = await pool.query<{
     child_id: number;
     face_dist: number;
@@ -191,8 +227,6 @@ router.post("/", async (req, res) => {
     })
     .returning();
 
-  // Store the averaged embedding (already computed and L2-normalised above).
-  // One canonical embedding per registration, free of per-frame noise.
   await pool.query(
     `INSERT INTO child_biometrics (child_id, photo_index, modality, embedding)
      VALUES ($1, $2, 'face', $3::vector)`,

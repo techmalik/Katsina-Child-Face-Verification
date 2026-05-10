@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link } from "wouter";
+import { useSearchParams } from "wouter";
 import {
   useListChildren,
   getListChildrenQueryKey,
@@ -27,67 +28,167 @@ import {
   Filter,
   X,
   ArrowUpDown,
-  ChevronDown,
   ChevronUp,
 } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
 
 const SORT_OPTIONS = [
-  { value: "created_at-desc", label: "Newest first" },
-  { value: "created_at-asc", label: "Oldest first" },
+  { value: "created_at-desc", label: "Newest registered" },
+  { value: "created_at-asc", label: "Oldest registered" },
   { value: "name-asc", label: "Name A–Z" },
   { value: "name-desc", label: "Name Z–A" },
   { value: "verification_count-desc", label: "Most verified" },
+  { value: "verification_count-asc", label: "Least verified" },
   { value: "lga-asc", label: "LGA A–Z" },
   { value: "date_of_birth-asc", label: "Youngest first" },
-  { value: "date_of_birth-desc", label: "Oldest first (age)" },
+  { value: "date_of_birth-desc", label: "Oldest age first" },
 ];
 
+function DateRangePair({
+  label,
+  fromKey,
+  toKey,
+  fromValue,
+  toValue,
+  onChange,
+}: {
+  label: string;
+  fromKey: string;
+  toKey: string;
+  fromValue: string;
+  toValue: string;
+  onChange: (key: string, value: string) => void;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">{label}</p>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">
+            From
+          </label>
+          <Input
+            type="date"
+            value={fromValue}
+            onChange={(e) => onChange(fromKey, e.target.value)}
+            className="h-10 bg-gray-50 text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">
+            To
+          </label>
+          <Input
+            type="date"
+            value={toValue}
+            onChange={(e) => onChange(toKey, e.target.value)}
+            className="h-10 bg-gray-50 text-sm"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Registry() {
-  const [search, setSearch] = useState("");
-  const [filterLga, setFilterLga] = useState("");
-  const [dobFrom, setDobFrom] = useState("");
-  const [dobTo, setDobTo] = useState("");
-  const [regFrom, setRegFrom] = useState("");
-  const [regTo, setRegTo] = useState("");
-  const [sort, setSort] = useState("created_at-desc");
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const debouncedSearch = useDebounce(search, 300);
+  const filterLga = searchParams.get("lga") ?? "";
+  const dobFrom = searchParams.get("dob_from") ?? "";
+  const dobTo = searchParams.get("dob_to") ?? "";
+  const regFrom = searchParams.get("reg_from") ?? "";
+  const regTo = searchParams.get("reg_to") ?? "";
+  const verFrom = searchParams.get("ver_from") ?? "";
+  const verTo = searchParams.get("ver_to") ?? "";
+  const sortVal = searchParams.get("sort") ?? "created_at-desc";
+
+  const [searchInput, setSearchInput] = useState(() => searchParams.get("q") ?? "");
+  const debouncedSearch = useDebounce(searchInput, 350);
+
+  useEffect(() => {
+    const currentQ = searchParams.get("q") ?? "";
+    if (debouncedSearch === currentQ) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (debouncedSearch) next.set("q", debouncedSearch);
+        else next.delete("q");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [debouncedSearch]);
+
+  const setParam = useCallback(
+    (key: string, value: string) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (value) next.set(key, value);
+          else next.delete(key);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const clearAllFilters = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        ["lga", "dob_from", "dob_to", "reg_from", "reg_to", "ver_from", "ver_to"].forEach((k) =>
+          next.delete(k),
+        );
+        return next;
+      },
+      { replace: true },
+    );
+  }, [setSearchParams]);
+
   const { data: lgas } = useListLgas({ query: { queryKey: getListLgasQueryKey() } });
 
-  const [sortBy, sortDir] = sort.split("-") as [string, string];
+  const [sortBy, sortDir] = sortVal.split("-") as [string, string];
 
-  const params = {
+  const queryParams = {
     search: debouncedSearch || undefined,
     lga: filterLga || undefined,
     dob_from: dobFrom || undefined,
     dob_to: dobTo || undefined,
     registered_from: regFrom || undefined,
     registered_to: regTo || undefined,
+    verified_from: verFrom || undefined,
+    verified_to: verTo || undefined,
     sort_by: sortBy,
     sort_dir: sortDir,
     limit: 50,
   };
 
-  const { data, isLoading } = useListChildren(params, {
-    query: { queryKey: getListChildrenQueryKey(params) },
+  const { data, isLoading } = useListChildren(queryParams, {
+    query: { queryKey: getListChildrenQueryKey(queryParams) },
   });
 
-  const activeFilters: { label: string; clear: () => void }[] = [
-    ...(filterLga ? [{ label: `LGA: ${filterLga}`, clear: () => setFilterLga("") }] : []),
-    ...(dobFrom ? [{ label: `DOB from: ${dobFrom}`, clear: () => setDobFrom("") }] : []),
-    ...(dobTo ? [{ label: `DOB to: ${dobTo}`, clear: () => setDobTo("") }] : []),
-    ...(regFrom ? [{ label: `Registered from: ${regFrom}`, clear: () => setRegFrom("") }] : []),
-    ...(regTo ? [{ label: `Registered to: ${regTo}`, clear: () => setRegTo("") }] : []),
+  const activeFilters: { label: string; paramKey: string | string[] }[] = [
+    ...(filterLga ? [{ label: `LGA: ${filterLga}`, paramKey: "lga" }] : []),
+    ...(dobFrom ? [{ label: `Born from ${dobFrom}`, paramKey: "dob_from" }] : []),
+    ...(dobTo ? [{ label: `Born to ${dobTo}`, paramKey: "dob_to" }] : []),
+    ...(regFrom ? [{ label: `Registered from ${regFrom}`, paramKey: "reg_from" }] : []),
+    ...(regTo ? [{ label: `Registered to ${regTo}`, paramKey: "reg_to" }] : []),
+    ...(verFrom ? [{ label: `Verified from ${verFrom}`, paramKey: "ver_from" }] : []),
+    ...(verTo ? [{ label: `Verified to ${verTo}`, paramKey: "ver_to" }] : []),
   ];
 
-  const clearAllFilters = () => {
-    setFilterLga("");
-    setDobFrom("");
-    setDobTo("");
-    setRegFrom("");
-    setRegTo("");
+  const removeFilter = (paramKey: string | string[]) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        (Array.isArray(paramKey) ? paramKey : [paramKey]).forEach((k) => next.delete(k));
+        return next;
+      },
+      { replace: true },
+    );
   };
 
   return (
@@ -114,18 +215,18 @@ export function Registry() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
               <Input
                 placeholder="Search by name…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="pl-10 h-11 text-base font-medium shadow-sm bg-white"
               />
             </div>
 
             {/* Sort */}
-            <Select value={sort} onValueChange={setSort}>
+            <Select value={sortVal} onValueChange={(v) => setParam("sort", v)}>
               <SelectTrigger className="h-11 w-auto min-w-[44px] gap-1 px-3 bg-white shadow-sm">
                 <ArrowUpDown className="w-4 h-4 text-gray-500 shrink-0" />
-                <span className="hidden sm:inline text-sm font-medium truncate max-w-[120px]">
-                  {SORT_OPTIONS.find((o) => o.value === sort)?.label ?? "Sort"}
+                <span className="hidden sm:inline text-sm font-medium truncate max-w-[130px]">
+                  {SORT_OPTIONS.find((o) => o.value === sortVal)?.label ?? "Sort"}
                 </span>
               </SelectTrigger>
               <SelectContent>
@@ -147,7 +248,7 @@ export function Registry() {
             >
               <Filter className="w-4 h-4" />
               {activeFilters.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-primary text-white text-[10px] font-black flex items-center justify-center">
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-primary text-white text-[10px] font-black flex items-center justify-center">
                   {activeFilters.length}
                 </span>
               )}
@@ -156,14 +257,14 @@ export function Registry() {
 
           {/* Filter panel */}
           {filtersOpen && (
-            <div className="mt-3 p-4 bg-white border border-gray-200 rounded-xl shadow-sm space-y-3">
-              <div className="flex items-center justify-between mb-1">
+            <div className="mt-3 p-4 bg-white border border-gray-200 rounded-xl shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
                 <p className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
                   <Filter className="w-3.5 h-3.5" /> Filters
                 </p>
                 <button
                   onClick={() => setFiltersOpen(false)}
-                  className="text-gray-400 hover:text-gray-600 p-1"
+                  className="text-gray-400 hover:text-gray-600 p-1 rounded"
                 >
                   <ChevronUp className="w-4 h-4" />
                 </button>
@@ -171,12 +272,12 @@ export function Registry() {
 
               {/* LGA filter */}
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5 block">
                   LGA
                 </label>
                 <Select
                   value={filterLga || "__all__"}
-                  onValueChange={(v) => setFilterLga(v === "__all__" ? "" : v)}
+                  onValueChange={(v) => setParam("lga", v === "__all__" ? "" : v)}
                 >
                   <SelectTrigger className="h-10 bg-gray-50">
                     <SelectValue placeholder="All LGAs" />
@@ -192,85 +293,58 @@ export function Registry() {
                 </Select>
               </div>
 
-              {/* DOB range */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">
-                    Date of Birth — From
-                  </label>
-                  <Input
-                    type="date"
-                    value={dobFrom}
-                    onChange={(e) => setDobFrom(e.target.value)}
-                    className="h-10 bg-gray-50 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">
-                    Date of Birth — To
-                  </label>
-                  <Input
-                    type="date"
-                    value={dobTo}
-                    onChange={(e) => setDobTo(e.target.value)}
-                    className="h-10 bg-gray-50 text-sm"
-                  />
-                </div>
-              </div>
+              <DateRangePair
+                label="Date of Birth"
+                fromKey="dob_from"
+                toKey="dob_to"
+                fromValue={dobFrom}
+                toValue={dobTo}
+                onChange={setParam}
+              />
 
-              {/* Registration date range */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">
-                    Registered — From
-                  </label>
-                  <Input
-                    type="date"
-                    value={regFrom}
-                    onChange={(e) => setRegFrom(e.target.value)}
-                    className="h-10 bg-gray-50 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 block">
-                    Registered — To
-                  </label>
-                  <Input
-                    type="date"
-                    value={regTo}
-                    onChange={(e) => setRegTo(e.target.value)}
-                    className="h-10 bg-gray-50 text-sm"
-                  />
-                </div>
-              </div>
+              <DateRangePair
+                label="Registration Date"
+                fromKey="reg_from"
+                toKey="reg_to"
+                fromValue={regFrom}
+                toValue={regTo}
+                onChange={setParam}
+              />
+
+              <DateRangePair
+                label="Last Verification Date"
+                fromKey="ver_from"
+                toKey="ver_to"
+                fromValue={verFrom}
+                toValue={verTo}
+                onChange={setParam}
+              />
 
               {activeFilters.length > 0 && (
-                <div className="pt-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={clearAllFilters}
-                    className="text-destructive hover:text-destructive text-xs h-8 px-2"
-                  >
-                    <X className="w-3 h-3 mr-1" /> Clear all filters
-                  </Button>
-                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearAllFilters}
+                  className="text-destructive hover:text-destructive/80 text-xs h-8 px-2 -ml-2"
+                >
+                  <X className="w-3 h-3 mr-1" /> Clear all filters
+                </Button>
               )}
             </div>
           )}
 
-          {/* Active filter chips */}
+          {/* Active filter chips (shown when panel is closed) */}
           {activeFilters.length > 0 && !filtersOpen && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {activeFilters.map((f, i) => (
+            <div className="flex flex-wrap gap-1.5 mt-2 items-center">
+              {activeFilters.map((f) => (
                 <Badge
-                  key={i}
+                  key={Array.isArray(f.paramKey) ? f.paramKey.join(",") : f.paramKey}
                   variant="secondary"
-                  className="flex items-center gap-1 pr-1.5 text-xs font-semibold"
+                  className="flex items-center gap-1 pr-1 text-xs font-semibold"
                 >
                   {f.label}
                   <button
-                    onClick={f.clear}
+                    onClick={() => removeFilter(f.paramKey)}
                     className="ml-0.5 rounded-full hover:bg-gray-300 p-0.5"
                     aria-label={`Remove ${f.label} filter`}
                   >
@@ -288,6 +362,7 @@ export function Registry() {
           )}
         </header>
 
+        {/* Results list */}
         <div className="flex-1 overflow-y-auto pb-4 space-y-2">
           {isLoading ? (
             Array.from({ length: 5 }).map((_, i) => (
@@ -302,11 +377,13 @@ export function Registry() {
               </Card>
             ))
           ) : data?.children.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
+            <div className="text-center py-14 text-gray-500">
               <User className="w-14 h-14 mx-auto mb-3 text-gray-300" />
               <h3 className="text-lg font-bold text-gray-900">No records found</h3>
-              <p className="text-sm">
-                {activeFilters.length > 0 ? "Try adjusting or clearing your filters" : "Try a different search"}
+              <p className="text-sm mt-1">
+                {activeFilters.length > 0
+                  ? "Try adjusting or clearing your filters."
+                  : "No children registered yet."}
               </p>
               {activeFilters.length > 0 && (
                 <Button
@@ -340,7 +417,8 @@ export function Registry() {
                         {child.first_name} {child.surname}
                       </h4>
                       <p className="text-gray-500 text-xs font-medium flex items-center gap-1 truncate mt-0.5">
-                        <MapPin className="w-3 h-3 shrink-0" /> {child.village}, {child.lga}
+                        <MapPin className="w-3 h-3 shrink-0" />
+                        {child.village}, {child.lga}
                       </p>
                     </div>
                     <div className="px-3 text-gray-400 shrink-0">

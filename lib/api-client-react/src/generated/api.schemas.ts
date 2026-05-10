@@ -232,6 +232,14 @@ export type ListChildrenParams = {
    */
   registered_to?: string;
   /**
+   * Filter by earliest last-verification date (YYYY-MM-DD)
+   */
+  verified_from?: string;
+  /**
+   * Filter by latest last-verification date (YYYY-MM-DD)
+   */
+  verified_to?: string;
+  /**
    * Sort column: name | created_at | verification_count | lga | date_of_birth
    */
   sort_by?: string;

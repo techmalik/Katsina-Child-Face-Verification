@@ -36,6 +36,8 @@ router.get("/", async (req, res) => {
     dob_to,
     registered_from,
     registered_to,
+    verified_from,
+    verified_to,
     sort_by = "created_at",
     sort_dir = "desc",
   } = req.query as Record<string, string>;
@@ -44,40 +46,45 @@ router.get("/", async (req, res) => {
   const dir = sort_dir === "asc" ? "ASC" : "DESC";
 
   const filterParams = [
-    lga ?? null,
-    village ?? null,
-    search ?? null,
-    dob_from ?? null,
-    dob_to ?? null,
-    registered_from ? new Date(registered_from).toISOString() : null,
-    registered_to ? new Date(registered_to + "T23:59:59Z").toISOString() : null,
+    lga ?? null,                                                                         // $1
+    village ?? null,                                                                     // $2
+    search ?? null,                                                                      // $3
+    dob_from ?? null,                                                                    // $4
+    dob_to ?? null,                                                                      // $5
+    registered_from ? new Date(registered_from).toISOString() : null,                   // $6
+    registered_to ? new Date(registered_to + "T23:59:59Z").toISOString() : null,        // $7
+    verified_from ? new Date(verified_from).toISOString() : null,                       // $8
+    verified_to ? new Date(verified_to + "T23:59:59Z").toISOString() : null,            // $9
   ];
+
+  const WHERE = `
+    WHERE ($1::text IS NULL OR c.lga = $1)
+      AND ($2::text IS NULL OR c.village ILIKE '%' || $2 || '%')
+      AND ($3::text IS NULL OR (c.first_name || ' ' || c.surname) ILIKE '%' || $3 || '%')
+      AND ($4::text IS NULL OR c.date_of_birth::date >= $4::date)
+      AND ($5::text IS NULL OR c.date_of_birth::date <= $5::date)
+      AND ($6::text IS NULL OR c.created_at >= $6::timestamptz)
+      AND ($7::text IS NULL OR c.created_at <= $7::timestamptz)
+      AND ($8::text IS NULL OR EXISTS (
+            SELECT 1 FROM verifications v
+            WHERE v.child_id = c.id AND v.verified_at >= $8::timestamptz))
+      AND ($9::text IS NULL OR EXISTS (
+            SELECT 1 FROM verifications v
+            WHERE v.child_id = c.id AND v.verified_at <= $9::timestamptz))
+  `;
 
   const [countRow, dataRows] = await Promise.all([
     pool.query<{ count: string }>(
-      `SELECT COUNT(*)::text FROM children c
-       WHERE ($1::text IS NULL OR c.lga = $1)
-         AND ($2::text IS NULL OR c.village ILIKE '%' || $2 || '%')
-         AND ($3::text IS NULL OR (c.first_name || ' ' || c.surname) ILIKE '%' || $3 || '%')
-         AND ($4::text IS NULL OR c.date_of_birth::date >= $4::date)
-         AND ($5::text IS NULL OR c.date_of_birth::date <= $5::date)
-         AND ($6::text IS NULL OR c.created_at >= $6::timestamptz)
-         AND ($7::text IS NULL OR c.created_at <= $7::timestamptz)`,
+      `SELECT COUNT(*)::text FROM children c ${WHERE}`,
       filterParams,
     ),
     pool.query(
       `SELECT c.*,
               (SELECT COUNT(*)::text FROM verifications v WHERE v.child_id = c.id) AS verification_count
        FROM children c
-       WHERE ($1::text IS NULL OR c.lga = $1)
-         AND ($2::text IS NULL OR c.village ILIKE '%' || $2 || '%')
-         AND ($3::text IS NULL OR (c.first_name || ' ' || c.surname) ILIKE '%' || $3 || '%')
-         AND ($4::text IS NULL OR c.date_of_birth::date >= $4::date)
-         AND ($5::text IS NULL OR c.date_of_birth::date <= $5::date)
-         AND ($6::text IS NULL OR c.created_at >= $6::timestamptz)
-         AND ($7::text IS NULL OR c.created_at <= $7::timestamptz)
+       ${WHERE}
        ORDER BY ${col} ${dir}
-       LIMIT $8 OFFSET $9`,
+       LIMIT $10 OFFSET $11`,
       [...filterParams, parseInt(limit), parseInt(offset)],
     ),
   ]);

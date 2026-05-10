@@ -30,7 +30,10 @@ export function Verifications() {
 
   const clearMutation = useMutation({
     mutationFn: async () => {
-      const resp = await fetch("/api/verifications", { method: "DELETE" });
+      const resp = await fetch("/api/verifications", {
+        method: "DELETE",
+        headers: { "X-Confirm-Delete": "true" },
+      });
       if (!resp.ok) throw new Error("Failed to clear logs");
       return resp.json() as Promise<{ deleted: number }>;
     },

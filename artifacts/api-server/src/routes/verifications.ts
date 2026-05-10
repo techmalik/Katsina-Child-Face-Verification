@@ -103,7 +103,12 @@ router.get("/", async (req, res) => {
   });
 });
 
-router.delete("/", async (_req, res) => {
+router.delete("/", async (req, res) => {
+  if (req.headers["x-confirm-delete"] !== "true") {
+    return res
+      .status(400)
+      .json({ error: "Missing required header: X-Confirm-Delete: true" });
+  }
   const result = await pool.query("DELETE FROM verifications");
   return res.json({ deleted: result.rowCount ?? 0 });
 });

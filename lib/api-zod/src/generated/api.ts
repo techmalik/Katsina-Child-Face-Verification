@@ -52,6 +52,10 @@ export const VerifyChildResponse = zod.object({
           .string()
           .nullish()
           .describe("Base64-encoded face thumbnail for display"),
+        ear_photo: zod
+          .string()
+          .nullish()
+          .describe("Base64-encoded ear thumbnail for display"),
         created_at: zod.string(),
         verification_count: zod.number(),
       }),
@@ -98,6 +102,10 @@ export const ListChildrenResponse = zod.object({
         .string()
         .nullish()
         .describe("Base64-encoded face thumbnail for display"),
+      ear_photo: zod
+        .string()
+        .nullish()
+        .describe("Base64-encoded ear thumbnail for display"),
       created_at: zod.string(),
       verification_count: zod.number(),
     }),
@@ -137,6 +145,18 @@ export const RegisterChildBody = zod.object({
 });
 
 /**
+ * @summary Get face and ear photo thumbnails for a child
+ */
+export const GetChildPhotosParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetChildPhotosResponse = zod.object({
+  face_photo: zod.string().nullable().describe("Base64-encoded face thumbnail"),
+  ear_photo: zod.string().nullable().describe("Base64-encoded ear thumbnail"),
+});
+
+/**
  * @summary Get a single child record
  */
 export const GetChildParams = zod.object({
@@ -158,6 +178,10 @@ export const GetChildResponse = zod.object({
     .string()
     .nullish()
     .describe("Base64-encoded face thumbnail for display"),
+  ear_photo: zod
+    .string()
+    .nullish()
+    .describe("Base64-encoded ear thumbnail for display"),
   created_at: zod.string(),
   verification_count: zod.number(),
 });
@@ -216,6 +240,10 @@ export const ListVerificationsResponse = zod.object({
               .string()
               .nullish()
               .describe("Base64-encoded face thumbnail for display"),
+            ear_photo: zod
+              .string()
+              .nullish()
+              .describe("Base64-encoded ear thumbnail for display"),
             created_at: zod.string(),
             verification_count: zod.number(),
           }),
@@ -259,6 +287,10 @@ export const GetReviewQueueResponseItem = zod.object({
           .string()
           .nullish()
           .describe("Base64-encoded face thumbnail for display"),
+        ear_photo: zod
+          .string()
+          .nullish()
+          .describe("Base64-encoded ear thumbnail for display"),
         created_at: zod.string(),
         verification_count: zod.number(),
       }),
@@ -312,6 +344,10 @@ export const SubmitReviewResponse = zod.object({
           .string()
           .nullish()
           .describe("Base64-encoded face thumbnail for display"),
+        ear_photo: zod
+          .string()
+          .nullish()
+          .describe("Base64-encoded ear thumbnail for display"),
         created_at: zod.string(),
         verification_count: zod.number(),
       }),

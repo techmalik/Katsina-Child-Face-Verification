@@ -1,10 +1,10 @@
 import { useRoute } from "wouter";
-import { useGetChild, getGetChildQueryKey } from "@workspace/api-client-react";
+import { useGetChild, getGetChildQueryKey, useGetChildPhotos, getGetChildPhotosQueryKey } from "@workspace/api-client-react";
 import { Layout } from "@/components/layout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { User, MapPin, Calendar, Users, Activity, Eye, ArrowLeft } from "lucide-react";
+import { User, MapPin, Calendar, Users, Activity, Eye, ArrowLeft, Ear } from "lucide-react";
 import { Link } from "wouter";
 
 export function RegistryDetail() {
@@ -13,6 +13,10 @@ export function RegistryDetail() {
 
   const { data: child, isLoading } = useGetChild(id, {
     query: { enabled: !!id, queryKey: getGetChildQueryKey(id) }
+  });
+
+  const { data: photos, isLoading: photosLoading } = useGetChildPhotos(id, {
+    query: { enabled: !!id, queryKey: getGetChildPhotosQueryKey(id) }
   });
 
   if (isLoading) {
@@ -46,14 +50,37 @@ export function RegistryDetail() {
         </Link>
 
         <div className="bg-white rounded-2xl overflow-hidden shadow-md border mb-6">
-          <div className="aspect-square bg-gray-100 relative">
-            {child.face_photo ? (
-              <img src={child.face_photo} alt={child.first_name} className="w-full h-full object-cover" />
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <User className="w-24 h-24 text-gray-300" />
+          <div className="grid grid-cols-2 divide-x bg-gray-100 relative">
+            <div className="aspect-square relative">
+              {photosLoading ? (
+                <Skeleton className="absolute inset-0" />
+              ) : photos?.face_photo ? (
+                <img src={photos.face_photo} alt={`${child.first_name} face`} className="w-full h-full object-cover" />
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                  <User className="w-16 h-16 text-gray-300" />
+                  <span className="text-xs font-bold text-gray-400 uppercase">Face</span>
+                </div>
+              )}
+              <div className="absolute bottom-0 inset-x-0 bg-black/40 py-1 text-center">
+                <span className="text-xs font-bold text-white uppercase tracking-wider">Face</span>
               </div>
-            )}
+            </div>
+            <div className="aspect-square relative">
+              {photosLoading ? (
+                <Skeleton className="absolute inset-0" />
+              ) : photos?.ear_photo ? (
+                <img src={photos.ear_photo} alt={`${child.first_name} ear`} className="w-full h-full object-cover" />
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                  <Ear className="w-16 h-16 text-gray-300" />
+                  <span className="text-xs font-bold text-gray-400 uppercase">Ear</span>
+                </div>
+              )}
+              <div className="absolute bottom-0 inset-x-0 bg-black/40 py-1 text-center">
+                <span className="text-xs font-bold text-white uppercase tracking-wider">Ear</span>
+              </div>
+            </div>
             <div className="absolute top-4 right-4">
               <Badge variant="secondary" className="bg-white/90 text-black font-bold px-3 py-1 shadow-sm backdrop-blur-sm">
                 ID: {child.id}

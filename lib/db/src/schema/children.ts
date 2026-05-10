@@ -14,6 +14,7 @@ export const childrenTable = pgTable("children", {
   gps_lat: real("gps_lat"),
   gps_lng: real("gps_lng"),
   face_photo: text("face_photo"),
+  ear_photo: text("ear_photo"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 

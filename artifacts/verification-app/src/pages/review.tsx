@@ -65,9 +65,9 @@ export function Review() {
                 </div>
                 
                 <CardContent className="p-6">
-                  <div className="grid grid-cols-2 gap-6 mb-8">
+                  <div className="grid grid-cols-3 gap-4 mb-8">
                     {/* Captured Image */}
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                       <h4 className="text-center font-bold text-sm text-gray-500 uppercase tracking-wider">New Capture</h4>
                       <div className="aspect-square bg-gray-200 rounded-xl overflow-hidden border-2 relative">
                         {item.capture_photo ? (
@@ -80,12 +80,26 @@ export function Review() {
                       </div>
                     </div>
 
-                    {/* Database Record */}
-                    <div className="space-y-3">
-                      <h4 className="text-center font-bold text-sm text-gray-500 uppercase tracking-wider">DB Record</h4>
+                    {/* DB Record – face */}
+                    <div className="space-y-2">
+                      <h4 className="text-center font-bold text-sm text-gray-500 uppercase tracking-wider">DB Face</h4>
                       <div className="aspect-square bg-gray-200 rounded-xl overflow-hidden border-2 relative">
                         {item.candidate_child?.face_photo ? (
-                          <img src={item.candidate_child.face_photo} alt="Database" className="w-full h-full object-cover" />
+                          <img src={item.candidate_child.face_photo} alt="Database face" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <User className="w-16 h-16 text-gray-400" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* DB Record – ear */}
+                    <div className="space-y-2">
+                      <h4 className="text-center font-bold text-sm text-gray-500 uppercase tracking-wider">DB Ear</h4>
+                      <div className="aspect-square bg-gray-200 rounded-xl overflow-hidden border-2 relative">
+                        {item.candidate_child?.ear_photo ? (
+                          <img src={item.candidate_child.ear_photo} alt="Database ear" className="w-full h-full object-cover" />
                         ) : (
                           <div className="absolute inset-0 flex items-center justify-center">
                             <User className="w-16 h-16 text-gray-400" />

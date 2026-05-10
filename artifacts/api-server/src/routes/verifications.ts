@@ -18,6 +18,7 @@ function buildChild(row: any) {
     gps_lat: row.c_gps_lat,
     gps_lng: row.c_gps_lng,
     face_photo: row.face_photo,
+    ear_photo: row.ear_photo,
     created_at: row.c_created_at?.toISOString() ?? null,
     verification_count: parseInt(row.vc ?? "0", 10),
   };
@@ -29,7 +30,7 @@ router.get("/review-queue", async (_req, res) => {
             c.id AS c_id, c.first_name, c.surname, c.guardian_name,
             c.date_of_birth, c.lga, c.village, c.visible_marks,
             c.gps_lat AS c_gps_lat, c.gps_lng AS c_gps_lng,
-            c.face_photo, c.created_at AS c_created_at,
+            c.face_photo, c.ear_photo, c.created_at AS c_created_at,
             (SELECT COUNT(*)::text FROM verifications v2 WHERE v2.child_id = c.id) AS vc
      FROM verifications v
      LEFT JOIN children c ON v.child_id = c.id
@@ -73,7 +74,7 @@ router.get("/", async (req, res) => {
               c.id AS c_id, c.first_name, c.surname, c.guardian_name,
               c.date_of_birth, c.lga, c.village, c.visible_marks,
               c.gps_lat AS c_gps_lat, c.gps_lng AS c_gps_lng,
-              c.face_photo, c.created_at AS c_created_at,
+              c.face_photo, c.ear_photo, c.created_at AS c_created_at,
               (SELECT COUNT(*)::text FROM verifications v2 WHERE v2.child_id = c.id) AS vc
        FROM verifications v
        LEFT JOIN children c ON v.child_id = c.id

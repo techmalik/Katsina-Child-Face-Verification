@@ -127,6 +127,37 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /children/{id}/photos:
+    get:
+      operationId: getChildPhotos
+      tags: [children]
+      summary: Get face and ear photo thumbnails for a child
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Child photo thumbnails
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChildPhotos"
+        "400":
+          description: Invalid id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Child not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /children/{id}:
     get:
       operationId: getChild
@@ -304,6 +335,9 @@ components:
         face_photo:
           type: ["string", "null"]
           description: Base64-encoded face thumbnail for display
+        ear_photo:
+          type: ["string", "null"]
+          description: Base64-encoded ear thumbnail for display
         created_at:
           type: string
         verification_count:
@@ -523,6 +557,19 @@ components:
         - verifications_this_week
         - pending_reviews
         - verifications_by_lga
+
+    ChildPhotos:
+      type: object
+      properties:
+        face_photo:
+          type: ["string", "null"]
+          description: Base64-encoded face thumbnail
+        ear_photo:
+          type: ["string", "null"]
+          description: Base64-encoded ear thumbnail
+      required:
+        - face_photo
+        - ear_photo
 
     LgaInfo:
       type: object

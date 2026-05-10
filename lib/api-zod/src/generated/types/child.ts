@@ -25,6 +25,11 @@ export interface Child {
    * @nullable
    */
   face_photo?: string | null;
+  /**
+   * Base64-encoded ear thumbnail for display
+   * @nullable
+   */
+  ear_photo?: string | null;
   created_at: string;
   verification_count: number;
 }

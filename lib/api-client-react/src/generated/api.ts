@@ -19,6 +19,7 @@ import type {
 import type {
   Child,
   ChildInput,
+  ChildPhotos,
   ChildrenList,
   ErrorResponse,
   HealthStatus,
@@ -385,6 +386,93 @@ export const useRegisterChild = <
 > => {
   return useMutation(getRegisterChildMutationOptions(options));
 };
+
+/**
+ * @summary Get face and ear photo thumbnails for a child
+ */
+export const getGetChildPhotosUrl = (id: number) => {
+  return `/api/children/${id}/photos`;
+};
+
+export const getChildPhotos = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ChildPhotos> => {
+  return customFetch<ChildPhotos>(getGetChildPhotosUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetChildPhotosQueryKey = (id: number) => {
+  return [`/api/children/${id}/photos`] as const;
+};
+
+export const getGetChildPhotosQueryOptions = <
+  TData = Awaited<ReturnType<typeof getChildPhotos>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getChildPhotos>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetChildPhotosQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getChildPhotos>>> = ({
+    signal,
+  }) => getChildPhotos(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getChildPhotos>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetChildPhotosQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getChildPhotos>>
+>;
+export type GetChildPhotosQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get face and ear photo thumbnails for a child
+ */
+
+export function useGetChildPhotos<
+  TData = Awaited<ReturnType<typeof getChildPhotos>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getChildPhotos>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetChildPhotosQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Get a single child record

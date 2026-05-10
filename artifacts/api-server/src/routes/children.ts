@@ -79,6 +79,8 @@ router.post("/", async (req, res) => {
 
   const facePhoto =
     face_images[0] && face_images[0].length < 300_000 ? face_images[0] : null;
+  const earPhoto =
+    ear_images[0] && ear_images[0].length < 300_000 ? ear_images[0] : null;
 
   const [child] = await db
     .insert(childrenTable)
@@ -93,6 +95,7 @@ router.post("/", async (req, res) => {
       gps_lat: gps_lat ?? null,
       gps_lng: gps_lng ?? null,
       face_photo: facePhoto,
+      ear_photo: earPhoto,
     })
     .returning();
 
@@ -119,6 +122,21 @@ router.post("/", async (req, res) => {
     created_at: child.created_at.toISOString(),
     verification_count: 0,
   });
+});
+
+router.get("/:id/photos", async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+
+  const result = await pool.query<{ face_photo: string | null; ear_photo: string | null }>(
+    `SELECT face_photo, ear_photo FROM children WHERE id = $1`,
+    [id],
+  );
+
+  if (!result.rows[0]) return res.status(404).json({ error: "Child not found" });
+
+  const { face_photo, ear_photo } = result.rows[0];
+  return res.json({ face_photo: face_photo ?? null, ear_photo: ear_photo ?? null });
 });
 
 router.get("/:id", async (req, res) => {

@@ -8,6 +8,7 @@
 
 export * from "./child";
 export * from "./childInput";
+export * from "./childPhotos";
 export * from "./childrenList";
 export * from "./errorResponse";
 export * from "./healthStatus";

@@ -32,6 +32,11 @@ export interface Child {
    * @nullable
    */
   face_photo?: string | null;
+  /**
+   * Base64-encoded ear thumbnail for display
+   * @nullable
+   */
+  ear_photo?: string | null;
   created_at: string;
   verification_count: number;
 }
@@ -187,6 +192,19 @@ export interface Stats {
   verifications_this_week: number;
   pending_reviews: number;
   verifications_by_lga: StatsVerificationsByLga;
+}
+
+export interface ChildPhotos {
+  /**
+   * Base64-encoded face thumbnail
+   * @nullable
+   */
+  face_photo: string | null;
+  /**
+   * Base64-encoded ear thumbnail
+   * @nullable
+   */
+  ear_photo: string | null;
 }
 
 export interface LgaInfo {

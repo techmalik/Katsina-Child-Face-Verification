@@ -57,8 +57,3 @@ externalPort = 80
 
 [nix]
 channel = "stable-25_05"
-
-[userenv]
-
-[userenv.production]
-FACE_SERVICE_URL = "http://localhost:8001"

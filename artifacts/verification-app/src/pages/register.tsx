@@ -9,7 +9,7 @@ import {
   useListLgas,
   getListLgasQueryKey,
 } from "@workspace/api-client-react";
-import type { VerificationResult } from "@workspace/api-client-react";
+import type { VerificationResult, Child } from "@workspace/api-client-react";
 import { Layout } from "@/components/layout";
 import { CameraCapture } from "@/components/camera-capture";
 import { VillageCombobox } from "@/components/village-combobox";
@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-type Step = "face" | "ear" | "checking" | "exists" | "review" | "new_form";
+type Step = "face" | "ear" | "checking" | "exists" | "review" | "new_form" | "duplicate";
 
 const formSchema = z.object({
   first_name: z.string().min(1, "First name is required"),
@@ -62,6 +62,7 @@ export function Register() {
   const [faceImage, setFaceImage] = useState<string | null>(null);
   const [earImage, setEarImage] = useState<string | null>(null);
   const [verifyResult, setVerifyResult] = useState<VerificationResult | null>(null);
+  const [duplicateMatch, setDuplicateMatch] = useState<{ child: Child | null; confidence: number } | null>(null);
   const [gpsLat, setGpsLat] = useState<number | null>(null);
   const [gpsLng, setGpsLng] = useState<number | null>(null);
   const [gpsError, setGpsError] = useState(false);
@@ -100,6 +101,7 @@ export function Register() {
     setFaceImage(null);
     setEarImage(null);
     setVerifyResult(null);
+    setDuplicateMatch(null);
     form.reset();
   };
 
@@ -155,7 +157,16 @@ export function Register() {
           setLocation("/registry");
         },
         onError: (err: unknown) => {
-          toast.error((err as { error?: string })?.error ?? "Registration failed");
+          const apiErr = err as { status?: number; data?: { matched_child?: Child | null; confidence?: number; error?: string } };
+          if (apiErr?.status === 409 && apiErr?.data) {
+            setDuplicateMatch({
+              child: apiErr.data.matched_child ?? null,
+              confidence: apiErr.data.confidence ?? 0,
+            });
+            setStep("duplicate");
+          } else {
+            toast.error((apiErr?.data as { error?: string })?.error ?? "Registration failed");
+          }
         },
       }
     );
@@ -358,6 +369,105 @@ export function Register() {
             </Button>
             <Button variant="outline" onClick={resetFlow} className="w-full h-14 text-lg">
               <RefreshCw className="mr-2 h-5 w-5" /> Scan Again
+            </Button>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  /* ── Duplicate detected during registration ─────────────────────── */
+  if (step === "duplicate") {
+    const child = duplicateMatch?.child ?? null;
+    const confidence = duplicateMatch?.confidence ?? 0;
+    return (
+      <Layout>
+        <div className="p-4 md:p-8 max-w-lg mx-auto w-full space-y-5">
+          <div className="bg-orange-500 text-white rounded-xl p-4 flex items-center gap-3 shadow">
+            <AlertTriangle className="w-10 h-10 shrink-0" />
+            <div>
+              <p className="font-black text-xl leading-tight">Possible Duplicate Registration</p>
+              <p className="text-white/80 text-sm">This child may already be in the database</p>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            {faceImage && (
+              <div className="flex flex-col items-center gap-1">
+                <img src={faceImage} alt="Face" className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200" />
+                <span className="text-xs font-bold text-gray-500 uppercase">Scanned Face</span>
+              </div>
+            )}
+            {earImage && (
+              <div className="flex flex-col items-center gap-1">
+                <img src={earImage} alt="Ear" className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200" />
+                <span className="text-xs font-bold text-gray-500 uppercase">Scanned Profile</span>
+              </div>
+            )}
+            <div className="flex flex-col items-center justify-center ml-auto px-4 bg-orange-50 rounded-lg border border-orange-200">
+              <p className="text-3xl font-black text-orange-700">
+                {Math.round(confidence * 100)}%
+              </p>
+              <p className="text-xs font-bold text-orange-600 uppercase">Similarity</p>
+            </div>
+          </div>
+
+          {child && (
+            <div className="bg-white rounded-xl p-5 shadow border space-y-4">
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Matched Record</p>
+              <div className="flex gap-4 items-start">
+                {child.face_photo ? (
+                  <img
+                    src={child.face_photo}
+                    alt={child.first_name}
+                    className="w-20 h-20 rounded-full object-cover border-2 border-gray-200 shrink-0"
+                  />
+                ) : (
+                  <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center border-2 border-gray-200 shrink-0">
+                    <span className="text-3xl font-black text-gray-400">
+                      {child.first_name[0]}
+                    </span>
+                  </div>
+                )}
+                <div>
+                  <p className="text-2xl font-black text-gray-900">
+                    {child.first_name} {child.surname}
+                  </p>
+                  <p className="text-gray-600 font-medium">Guardian: {child.guardian_name}</p>
+                  <p className="text-gray-500 text-sm">{child.lga} · {child.village}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t">
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase">Date of Birth</p>
+                  <p className="font-semibold text-gray-800">{child.date_of_birth}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase">Village</p>
+                  <p className="font-semibold text-gray-800">{child.village}</p>
+                </div>
+                {child.visible_marks && (
+                  <div className="col-span-2">
+                    <p className="text-xs font-bold text-gray-400 uppercase">Visible Marks</p>
+                    <p className="font-semibold text-gray-800">{child.visible_marks}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+            <p className="text-orange-900 font-bold text-sm">
+              Registration was blocked. If this is a different child, retake the photos and try again. Otherwise, use the Verify screen instead of Register.
+            </p>
+          </div>
+
+          <div className="space-y-3 pt-2">
+            <Button onClick={() => setLocation("/")} className="w-full h-14 text-lg font-bold">
+              Done — Return Home
+            </Button>
+            <Button variant="outline" onClick={resetFlow} className="w-full h-14 text-lg">
+              <RefreshCw className="mr-2 h-5 w-5" /> Retake Photos &amp; Try Again
             </Button>
           </div>
         </div>

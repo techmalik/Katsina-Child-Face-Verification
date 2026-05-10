@@ -128,7 +128,7 @@ export function Layout({ children }: LayoutProps) {
           <NavLinks />
         </nav>
         <div className="p-4 border-t border-white/10 text-xs text-white/50 text-center">
-          Field Officer ID: 4892
+          Field Officer: Malik Kabir
         </div>
       </div>
 
@@ -152,7 +152,7 @@ export function Layout({ children }: LayoutProps) {
           <NavLinks />
         </nav>
         <div className="p-4 border-t border-white/10 text-xs text-white/50 text-center">
-          Field Officer ID: 4892
+          Field Officer: Malik Kabir
         </div>
       </aside>
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Camera, RefreshCw, Check, Sun, SunDim } from "lucide-react";
+import { Camera, RefreshCw, Check, Sun, SunDim, SwitchCamera } from "lucide-react";
 
 interface CameraCaptureProps {
   onCapture: (images: string[]) => void;
@@ -78,7 +78,6 @@ function computeOval(overlayType: "face" | "ear"): OvalDims {
   const base = OVAL_BASE[overlayType];
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  // Bottom bar ~100px, top header ~64px; leave 80% of remaining height
   const availH = (vh - 164) * 0.80;
   const scaleW = Math.min(1, (vw * 0.78) / base.w);
   const scaleH = Math.min(1, availH / base.h);
@@ -101,6 +100,7 @@ function getClipPath(oval: OvalDims): string {
 function computeCrop(
   video: HTMLVideoElement,
   oval: OvalDims,
+  mirrored: boolean,
 ): { sx: number; sy: number; sw: number; sh: number } {
   const videoW = video.videoWidth  || 640;
   const videoH = video.videoHeight || 480;
@@ -111,15 +111,17 @@ function computeCrop(
   const offsetX = (videoW * scale - elemW) / 2;
   const offsetY = (videoH * scale - elemH) / 2;
 
-  const cx = elemW / 2 + oval.dx;
+  // When mirrored, the displayed cx must be flipped to find the real video x
+  const displayCx = elemW / 2 + oval.dx;
+  const realCx = mirrored ? elemW - displayCx : displayCx;
   const cy = elemH / 2;
 
   const toVx = (ex: number) => (ex + offsetX) / scale;
   const toVy = (ey: number) => (ey + offsetY) / scale;
 
-  const sx = Math.max(0, toVx(cx - oval.w / 2));
+  const sx = Math.max(0, toVx(realCx - oval.w / 2));
   const sy = Math.max(0, toVy(cy - oval.h / 2));
-  const sw = Math.min(videoW, toVx(cx + oval.w / 2)) - sx;
+  const sw = Math.min(videoW, toVx(realCx + oval.w / 2)) - sx;
   const sh = Math.min(videoH, toVy(cy + oval.h / 2)) - sy;
 
   return { sx, sy, sw, sh };
@@ -127,6 +129,8 @@ function computeCrop(
 
 const FRAME_COUNT = 3;
 const FRAME_INTERVAL_MS = 300;
+
+type FacingMode = "environment" | "user";
 
 export function CameraCapture({
   onCapture,
@@ -141,6 +145,10 @@ export function CameraCapture({
   const capturedFramesRef = useRef<string[]>([]);
 
   const [oval, setOval] = useState<OvalDims>(() => computeOval(overlayType));
+  const [facingMode, setFacingMode] = useState<FacingMode>("environment");
+
+  // front camera preview is mirrored so it feels natural; back camera is not
+  const isMirrored = facingMode === "user";
 
   useEffect(() => {
     const onResize = () => setOval(computeOval(overlayType));
@@ -170,14 +178,15 @@ export function CameraCapture({
     }
   }, []);
 
-  const startCamera = useCallback(async () => {
+  const startCamera = useCallback(async (mode: FacingMode = "environment") => {
     setError(null);
     setReady(false);
     setCapturedImage(null);
     capturedFramesRef.current = [];
+    stopCamera();
     try {
       const ms = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode: { ideal: mode }, width: { ideal: 1280 }, height: { ideal: 720 } },
       });
       streamRef.current = ms;
       if (videoRef.current) {
@@ -194,25 +203,34 @@ export function CameraCapture({
     } catch {
       setError("Failed to access camera. Please check permissions.");
     }
-  }, []);
+  }, [stopCamera]);
 
   useEffect(() => {
-    startCamera();
+    startCamera(facingMode);
     return stopCamera;
-  }, [startCamera, stopCamera]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleFlipCamera = useCallback(() => {
+    const next: FacingMode = facingMode === "environment" ? "user" : "environment";
+    setFacingMode(next);
+    startCamera(next);
+  }, [facingMode, startCamera]);
 
   const captureFrame = useCallback((): string | null => {
     const video  = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return null;
-    const { sx, sy, sw, sh } = computeCrop(video, oval);
+    const { sx, sy, sw, sh } = computeCrop(video, oval, isMirrored);
     canvas.width  = Math.max(1, Math.round(sw));
     canvas.height = Math.max(1, Math.round(sh));
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
+    // For front camera: the crop already accounts for the mirror,
+    // so we draw straight — the saved image will be un-mirrored (correct)
     ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
     return canvas.toDataURL("image/jpeg", 0.85);
-  }, [oval]);
+  }, [oval, isMirrored]);
 
   const handleCapture = useCallback(async () => {
     if (!ready || capturing) return;
@@ -244,7 +262,7 @@ export function CameraCapture({
     setCapturedImage(null);
     setCountdown(null);
     capturedFramesRef.current = [];
-    startCamera();
+    startCamera(facingMode);
   };
 
   const handleConfirm = () => {
@@ -271,7 +289,7 @@ export function CameraCapture({
         {error ? (
           <div className="text-white p-6 text-center">
             <p className="text-red-400 mb-4 text-lg">{error}</p>
-            <Button onClick={startCamera} variant="outline" className="min-h-[48px]">
+            <Button onClick={() => startCamera(facingMode)} variant="outline" className="min-h-[48px]">
               Retry
             </Button>
           </div>
@@ -298,8 +316,8 @@ export function CameraCapture({
               muted
               className="w-full h-full object-cover"
               style={ready
-                ? { clipPath: getClipPath(oval), transform: "scaleX(-1)" }
-                : { transform: "scaleX(-1)" }}
+                ? { clipPath: getClipPath(oval), transform: isMirrored ? "scaleX(-1)" : "none" }
+                : { transform: isMirrored ? "scaleX(-1)" : "none" }}
             />
             {ready && (
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
@@ -364,14 +382,30 @@ export function CameraCapture({
             </Button>
           </>
         ) : (
-          <button
-            onClick={handleCapture}
-            disabled={!ready || capturing}
-            className="w-20 h-20 rounded-full bg-white border-4 border-gray-400 flex items-center justify-center active:scale-95 transition-transform disabled:opacity-50"
-            aria-label="Capture photo"
-          >
-            <Camera className="h-8 w-8 text-black" />
-          </button>
+          <>
+            {/* Camera flip button */}
+            <button
+              onClick={handleFlipCamera}
+              disabled={capturing}
+              className="w-14 h-14 rounded-full bg-white/20 border border-white/30 flex items-center justify-center active:scale-95 transition-transform disabled:opacity-50"
+              aria-label="Switch camera"
+            >
+              <SwitchCamera className="h-6 w-6 text-white" />
+            </button>
+
+            {/* Shutter button */}
+            <button
+              onClick={handleCapture}
+              disabled={!ready || capturing}
+              className="w-20 h-20 rounded-full bg-white border-4 border-gray-400 flex items-center justify-center active:scale-95 transition-transform disabled:opacity-50"
+              aria-label="Capture photo"
+            >
+              <Camera className="h-8 w-8 text-black" />
+            </button>
+
+            {/* Spacer to keep shutter centred */}
+            <div className="w-14 h-14" />
+          </>
         )}
       </div>
     </div>

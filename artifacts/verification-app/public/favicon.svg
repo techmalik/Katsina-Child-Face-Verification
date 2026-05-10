@@ -1,3 +1,44 @@
 <svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+  <rect width="180" height="180" rx="36" fill="#2d7a3a"/>
+  <g transform="translate(8, 12) scale(0.86)">
+    <path d="
+      M 28,58
+      L 32,42
+      L 40,28
+      L 52,18
+      L 68,12
+      L 88,10
+      L 104,12
+      L 112,10
+      L 126,6
+      L 144,8
+      L 162,14
+      L 178,22
+      L 182,32
+      L 174,40
+      L 160,42
+      L 148,38
+      L 140,44
+      L 150,56
+      L 146,68
+      L 134,80
+      L 120,94
+      L 108,110
+      L 96,124
+      L 82,134
+      L 68,138
+      L 56,134
+      L 46,140
+      L 36,150
+      L 24,150
+      L 14,140
+      L 16,126
+      L 26,114
+      L 20,100
+      L 16,84
+      L 18,68
+      L 24,58
+      Z
+    " fill="white"/>
+  </g>
 </svg>

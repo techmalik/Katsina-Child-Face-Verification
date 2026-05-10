@@ -1,11 +1,11 @@
 interface KatsinaMapProps {
   className?: string;
   size?: number;
-  strokeWidth?: number;
   filled?: boolean;
+  strokeWidth?: number;
 }
 
-export function KatsinaMap({ className, size = 48, strokeWidth = 2, filled = true }: KatsinaMapProps) {
+export function KatsinaMap({ className, size = 48, filled = true, strokeWidth = 2 }: KatsinaMapProps) {
   return (
     <svg
       width={size}
@@ -13,51 +13,51 @@ export function KatsinaMap({ className, size = 48, strokeWidth = 2, filled = tru
       viewBox="0 0 200 220"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
-      aria-label="Katsina State outline"
+      aria-label="Katsina State map"
       fill={filled ? "currentColor" : "none"}
       stroke={filled ? "none" : "currentColor"}
       strokeWidth={strokeWidth}
       strokeLinejoin="round"
     >
       <path d="
-        M 36,30
-        L 48,18
-        L 62,12
-        L 80,10
-        L 98,12
-        L 116,16
-        L 130,24
-        L 142,36
-        L 150,50
-        L 155,66
-        L 154,82
-        L 148,98
-        L 138,112
-        L 125,124
-        L 115,132
-        L 122,144
-        L 128,158
-        L 120,168
-        L 108,172
-        L 96,168
-        L 88,158
-        L 80,150
-        L 70,158
-        L 62,168
-        L 50,172
-        L 38,168
-        L 28,158
-        L 24,146
-        L 30,134
-        L 40,124
-        L 30,112
-        L 22,98
-        L 18,82
-        L 18,66
-        L 22,50
+        M 28,58
+        L 32,42
+        L 40,28
+        L 52,18
+        L 68,12
+        L 88,10
+        L 104,12
+        L 112,10
+        L 126,6
+        L 144,8
+        L 162,14
+        L 178,22
+        L 182,32
+        L 174,40
+        L 160,42
+        L 148,38
+        L 140,44
+        L 150,56
+        L 146,68
+        L 134,80
+        L 120,94
+        L 108,110
+        L 96,124
+        L 82,134
+        L 68,138
+        L 56,134
+        L 46,140
+        L 36,150
+        L 24,150
+        L 14,140
+        L 16,126
+        L 26,114
+        L 20,100
+        L 16,84
+        L 18,68
+        L 24,58
         Z
       " />
-      <circle cx="100" cy="92" r="8" fill={filled ? "white" : "currentColor"} opacity="0.4" />
     </svg>
   );
 }

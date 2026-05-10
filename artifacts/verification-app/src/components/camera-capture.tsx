@@ -62,19 +62,65 @@ function getFrameBrightness(video: HTMLVideoElement): number {
   }
 }
 
+// Oval overlay dimensions in CSS pixels (matching Tailwind classes below)
+const OVAL = {
+  face: { w: 256, h: 320, dx: 0 },  // w-64 h-80, centered
+  ear:  { w: 160, h: 256, dx: 32 }, // w-40 h-64, translate-x-8
+} as const;
+
+// Padding factor around the oval bounds when cropping (5% each side)
+const CROP_PADDING = 1.10;
+
+function computeCrop(
+  video: HTMLVideoElement,
+  overlayType: "face" | "ear"
+): { sx: number; sy: number; sw: number; sh: number } {
+  const videoW = video.videoWidth  || 640;
+  const videoH = video.videoHeight || 480;
+  const elemW  = video.clientWidth  || videoW;
+  const elemH  = video.clientHeight || videoH;
+
+  // object-cover: scale so the video completely covers the element
+  const scale   = Math.max(elemW / videoW, elemH / videoH);
+  // How many scaled-video pixels are hidden (letterbox offset)
+  const offsetX = (videoW * scale - elemW) / 2;
+  const offsetY = (videoH * scale - elemH) / 2;
+
+  const oval = OVAL[overlayType];
+
+  // Oval centre in element CSS pixels
+  const cx = elemW / 2 + oval.dx;
+  const cy = elemH / 2;
+
+  // Oval bounds with padding, in element CSS pixels
+  const halfW = (oval.w / 2) * CROP_PADDING;
+  const halfH = (oval.h / 2) * CROP_PADDING;
+
+  // Map element CSS px → video source px
+  const toVx = (ex: number) => (ex + offsetX) / scale;
+  const toVy = (ey: number) => (ey + offsetY) / scale;
+
+  const sx = Math.max(0, toVx(cx - halfW));
+  const sy = Math.max(0, toVy(cy - halfH));
+  const sw = Math.min(videoW, toVx(cx + halfW)) - sx;
+  const sh = Math.min(videoH, toVy(cy + halfH)) - sy;
+
+  return { sx, sy, sw, sh };
+}
+
 export function CameraCapture({
   onCapture,
   overlayType = "face",
   title = "Capture Photo",
   subtitle,
 }: CameraCaptureProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const videoRef    = useRef<HTMLVideoElement>(null);
+  const canvasRef   = useRef<HTMLCanvasElement>(null);
+  const streamRef   = useRef<MediaStream | null>(null);
   const brightnessIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
+  const [error,  setError]  = useState<string | null>(null);
+  const [ready,  setReady]  = useState(false);
   const [brightness, setBrightness] = useState<number>(128);
 
   const stopCamera = useCallback(() => {
@@ -118,14 +164,17 @@ export function CameraCapture({
   }, [startCamera, stopCamera]);
 
   const handleCapture = () => {
-    const video = videoRef.current;
+    const video  = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
+
+    const { sx, sy, sw, sh } = computeCrop(video, overlayType);
+
+    canvas.width  = Math.round(sw);
+    canvas.height = Math.round(sh);
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
     const base64 = canvas.toDataURL("image/jpeg", 0.85);
     setCapturedImage(base64);
     stopCamera();
@@ -147,6 +196,8 @@ export function CameraCapture({
   const lightLevel: "good" | "dim" | "dark" =
     brightness >= 100 ? "good" : brightness >= 55 ? "dim" : "dark";
 
+  const oval = OVAL[overlayType];
+
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
       <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent z-10">
@@ -165,11 +216,15 @@ export function CameraCapture({
             </Button>
           </div>
         ) : capturedImage ? (
-          <img
-            src={capturedImage}
-            alt="Captured"
-            className="w-full h-full object-cover"
-          />
+          /* ── Captured preview — show the cropped image centred ── */
+          <div className="w-full h-full flex items-center justify-center bg-black">
+            <img
+              src={capturedImage}
+              alt="Captured"
+              style={{ width: oval.w, height: oval.h }}
+              className="object-cover rounded-[40%] border-4 border-white shadow-[0_0_0_9999px_black]"
+            />
+          </div>
         ) : (
           <>
             <video
@@ -181,12 +236,17 @@ export function CameraCapture({
             />
             {ready && (
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                <div className="absolute inset-0 bg-black/30" />
                 {overlayType === "face" && (
-                  <div className="relative w-64 h-80 border-4 border-white rounded-[40%] shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]" />
+                  <div
+                    className="relative border-4 border-white rounded-[40%] shadow-[0_0_0_9999px_black]"
+                    style={{ width: oval.w, height: oval.h }}
+                  />
                 )}
                 {overlayType === "ear" && (
-                  <div className="relative w-40 h-64 border-4 border-white rounded-[30%] shadow-[0_0_0_9999px_rgba(0,0,0,0.45)] translate-x-8" />
+                  <div
+                    className="relative border-4 border-white rounded-[30%] shadow-[0_0_0_9999px_black]"
+                    style={{ width: oval.w, height: oval.h, transform: `translateX(${oval.dx}px)` }}
+                  />
                 )}
               </div>
             )}

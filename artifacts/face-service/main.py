@@ -1,8 +1,7 @@
 """
-Katsina State Child Verification — Face/Ear Embedding Service
-Uses InsightFace (ArcFace backbone) for face embeddings.
-For ear embeddings: resizes ear crop to 112x112 and passes through
-the recognition model directly (no face detection required).
+Katsina State Child Verification — Face Embedding Service
+Uses InsightFace (ArcFace backbone, buffalo_l model) for face embeddings.
+Face-only matching; ear capture has been removed.
 """
 
 import os
@@ -24,13 +23,12 @@ logger = logging.getLogger(__name__)
 
 # Global model state — loaded lazily on first request
 face_app = None
-rec_model = None
 _models_loading = False
 
 
 def _ensure_models():
     """Load models on first call; subsequent calls are no-ops."""
-    global face_app, rec_model, _models_loading
+    global face_app, _models_loading
     if face_app is not None:
         return
     if _models_loading:
@@ -40,14 +38,13 @@ def _ensure_models():
         return
     _models_loading = True
     try:
-        logger.info("Loading InsightFace models (buffalo_s)…")
+        logger.info("Loading InsightFace models (buffalo_l)…")
         face_app = FaceAnalysis(
-            name="buffalo_s",
+            name="buffalo_l",
             root=os.path.expanduser("~/.insightface"),
             providers=["CPUExecutionProvider"],
         )
         face_app.prepare(ctx_id=-1, det_size=(320, 320))
-        rec_model = face_app.models.get("recognition")
         logger.info("Models loaded successfully")
     finally:
         _models_loading = False
@@ -55,7 +52,7 @@ def _ensure_models():
 
 app = FastAPI(
     title="Katsina Biometric Face Service",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 app.add_middleware(
@@ -101,43 +98,23 @@ def extract_face_embedding(img_rgb: np.ndarray) -> list[float] | None:
     return normalise(best.embedding)
 
 
-def extract_ear_embedding(img_rgb: np.ndarray) -> list[float]:
-    """
-    Extract a 512-d embedding from an ear / profile crop.
-    We bypass face detection and feed the resized patch directly into
-    the ArcFace recognition head (expects 112×112 input).
-    """
-    _ensure_models()
-    pil = Image.fromarray(img_rgb).resize((112, 112), Image.LANCZOS)
-    patch = np.array(pil)  # H W C RGB uint8
-    # ArcFace preprocessing: normalise to [-1, 1] and add batch dim
-    patch = (patch.astype(np.float32) - 127.5) / 127.5
-    patch = patch.transpose(2, 0, 1)          # C H W
-    patch = np.expand_dims(patch, axis=0)      # 1 C H W
-    feat = rec_model.get_feat(patch)           # shape (1, 512) or (512,)
-    feat = np.squeeze(feat)
-    return normalise(feat)
-
-
 # ── request / response models ─────────────────────────────────────────────────
 
 class EmbedRequest(BaseModel):
-    image: str          # base64-encoded JPEG/PNG
+    image: str
 
 
 class EmbedResponse(BaseModel):
     embedding: list[float]
-    detected: bool      # True if face was detected (always True for ear endpoint)
+    detected: bool
 
 
 class BatchEmbedRequest(BaseModel):
     face_images: list[str]
-    ear_images: list[str]
 
 
 class BatchEmbedResponse(BaseModel):
-    face_embeddings: list[list[float]]   # one per image (empty list if detection failed)
-    ear_embeddings: list[list[float]]
+    face_embeddings: list[list[float]]
     face_detected: list[bool]
 
 
@@ -145,7 +122,7 @@ class BatchEmbedResponse(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model": "buffalo_s"}
+    return {"status": "ok", "model": "buffalo_l"}
 
 
 @app.post("/embed/face", response_model=EmbedResponse)
@@ -158,7 +135,6 @@ def embed_face(req: EmbedRequest):
 
     embedding = extract_face_embedding(img)
     if embedding is None:
-        # Return zero vector with detected=False; caller decides how to handle
         embedding = [0.0] * 512
         detected = False
     else:
@@ -169,25 +145,11 @@ def embed_face(req: EmbedRequest):
     return EmbedResponse(embedding=embedding, detected=detected)
 
 
-@app.post("/embed/ear", response_model=EmbedResponse)
-def embed_ear(req: EmbedRequest):
-    t0 = time.perf_counter()
-    try:
-        img = decode_image(req.image)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Cannot decode image: {exc}")
-
-    embedding = extract_ear_embedding(img)
-    ms = round((time.perf_counter() - t0) * 1000)
-    logger.info("embed_ear latency=%dms", ms)
-    return EmbedResponse(embedding=embedding, detected=True)
-
-
 @app.post("/embed/batch", response_model=BatchEmbedResponse)
 def embed_batch(req: BatchEmbedRequest):
     """
-    Register endpoint: process multiple face+ear images in one call.
-    Returns averaged embeddings (mean of all successful shots).
+    Process multiple face images in one call.
+    Returns one embedding per image (zero vector + detected=False if no face found).
     """
     t0 = time.perf_counter()
 
@@ -207,24 +169,9 @@ def embed_batch(req: BatchEmbedRequest):
             face_embeddings.append([0.0] * 512)
             face_detected.append(False)
 
-    ear_embeddings: list[list[float]] = []
-    for b64 in req.ear_images:
-        try:
-            img = decode_image(b64)
-            emb = extract_ear_embedding(img)
-            ear_embeddings.append(emb)
-        except Exception:
-            ear_embeddings.append([0.0] * 512)
-
     ms = round((time.perf_counter() - t0) * 1000)
-    logger.info(
-        "embed_batch faces=%d ears=%d latency=%dms",
-        len(face_embeddings),
-        len(ear_embeddings),
-        ms,
-    )
+    logger.info("embed_batch faces=%d latency=%dms", len(face_embeddings), ms)
     return BatchEmbedResponse(
         face_embeddings=face_embeddings,
-        ear_embeddings=ear_embeddings,
         face_detected=face_detected,
     )

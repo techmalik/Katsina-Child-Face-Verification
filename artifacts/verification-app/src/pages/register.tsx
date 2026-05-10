@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-type Step = "face" | "ear" | "checking" | "exists" | "review" | "new_form" | "duplicate";
+type Step = "face" | "checking" | "exists" | "review" | "new_form" | "duplicate";
 
 const formSchema = z.object({
   first_name: z.string().min(1, "First name is required"),
@@ -60,7 +60,6 @@ export function Register() {
   const [, setLocation] = useLocation();
   const [step, setStep] = useState<Step>("face");
   const [faceImage, setFaceImage] = useState<string | null>(null);
-  const [earImage, setEarImage] = useState<string | null>(null);
   const [verifyResult, setVerifyResult] = useState<VerificationResult | null>(null);
   const [duplicateMatch, setDuplicateMatch] = useState<{ child: Child | null; confidence: number } | null>(null);
   const [gpsLat, setGpsLat] = useState<number | null>(null);
@@ -99,7 +98,6 @@ export function Register() {
   const resetFlow = () => {
     setStep("face");
     setFaceImage(null);
-    setEarImage(null);
     setVerifyResult(null);
     setDuplicateMatch(null);
     form.reset();
@@ -107,20 +105,14 @@ export function Register() {
 
   const handleFaceCapture = (img: string) => {
     setFaceImage(img);
-    setStep("ear");
-  };
-
-  const handleEarCapture = (img: string) => {
-    setEarImage(img);
     setStep("checking");
     verifyMutation.mutate(
       {
         data: {
-          face_image: faceImage!,
-          ear_image: img,
+          face_image: img,
           gps_lat: gpsLat ?? null,
           gps_lng: gpsLng ?? null,
-        },
+        } as any,
       },
       {
         onSuccess: (data) => {
@@ -137,8 +129,8 @@ export function Register() {
   };
 
   const onSubmit = (data: FormValues) => {
-    if (!faceImage || !earImage) {
-      toast.error("Photos are required");
+    if (!faceImage) {
+      toast.error("Face photo is required");
       return;
     }
     registerMutation.mutate(
@@ -146,10 +138,9 @@ export function Register() {
         data: {
           ...data,
           face_images: [faceImage],
-          ear_images: [earImage],
           gps_lat: gpsLat ?? undefined,
           gps_lng: gpsLng ?? undefined,
-        },
+        } as any,
       },
       {
         onSuccess: () => {
@@ -172,27 +163,15 @@ export function Register() {
     );
   };
 
-  /* ── Camera steps ───────────────────────────────────────────────── */
+  /* ── Camera step ────────────────────────────────────────────────── */
   if (step === "face") {
     return (
       <CameraCapture
         key="face"
-        title="Step 1 of 2 — Face Photo"
+        title="Face Photo"
         subtitle="Look straight at the camera"
         overlayType="face"
         onCapture={handleFaceCapture}
-      />
-    );
-  }
-
-  if (step === "ear") {
-    return (
-      <CameraCapture
-        key="ear"
-        title="Step 2 of 2 — Profile / Ear"
-        subtitle="Turn the child's head to the side"
-        overlayType="ear"
-        onCapture={handleEarCapture}
       />
     );
   }
@@ -212,16 +191,6 @@ export function Register() {
               <span className="text-white/60 text-xs font-bold uppercase tracking-wider">Face</span>
             </div>
           )}
-          {earImage && (
-            <div className="flex flex-col items-center gap-2">
-              <img
-                src={earImage}
-                alt="Ear"
-                className="w-32 h-32 rounded-xl object-cover border-2 border-white/30"
-              />
-              <span className="text-white/60 text-xs font-bold uppercase tracking-wider">Profile</span>
-            </div>
-          )}
         </div>
         <div className="w-14 h-14 border-4 border-gray-700 border-t-white rounded-full animate-spin mb-6" />
         <h2 className="text-2xl font-bold text-white">Checking database…</h2>
@@ -236,7 +205,6 @@ export function Register() {
     return (
       <Layout>
         <div className="p-4 md:p-8 max-w-lg mx-auto w-full space-y-5">
-          {/* Green indicator banner */}
           <div className="bg-green-500 text-white rounded-xl p-4 flex items-center gap-3 shadow">
             <CheckCircle2 className="w-10 h-10 shrink-0" />
             <div>
@@ -245,18 +213,11 @@ export function Register() {
             </div>
           </div>
 
-          {/* Captured photos */}
           <div className="flex gap-3">
             {faceImage && (
               <div className="flex flex-col items-center gap-1">
                 <img src={faceImage} alt="Face" className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200" />
                 <span className="text-xs font-bold text-gray-500 uppercase">Scanned Face</span>
-              </div>
-            )}
-            {earImage && (
-              <div className="flex flex-col items-center gap-1">
-                <img src={earImage} alt="Ear" className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200" />
-                <span className="text-xs font-bold text-gray-500 uppercase">Scanned Profile</span>
               </div>
             )}
             {verifyResult?.confidence != null && (
@@ -269,7 +230,6 @@ export function Register() {
             )}
           </div>
 
-          {/* Child record card */}
           {child && (
             <div className="bg-white rounded-xl p-5 shadow border space-y-4">
               <div className="flex gap-4 items-start">
@@ -355,12 +315,6 @@ export function Register() {
                 <span className="text-xs font-bold text-gray-500 uppercase">Face</span>
               </div>
             )}
-            {earImage && (
-              <div className="flex flex-col items-center gap-1">
-                <img src={earImage} alt="Ear" className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200" />
-                <span className="text-xs font-bold text-gray-500 uppercase">Profile</span>
-              </div>
-            )}
           </div>
           <p className="text-gray-600">The record has been flagged for supervisor review. Do not issue donations until cleared.</p>
           <div className="space-y-3">
@@ -396,12 +350,6 @@ export function Register() {
               <div className="flex flex-col items-center gap-1">
                 <img src={faceImage} alt="Face" className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200" />
                 <span className="text-xs font-bold text-gray-500 uppercase">Scanned Face</span>
-              </div>
-            )}
-            {earImage && (
-              <div className="flex flex-col items-center gap-1">
-                <img src={earImage} alt="Ear" className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200" />
-                <span className="text-xs font-bold text-gray-500 uppercase">Scanned Profile</span>
               </div>
             )}
             <div className="flex flex-col items-center justify-center ml-auto px-4 bg-orange-50 rounded-lg border border-orange-200">
@@ -458,7 +406,7 @@ export function Register() {
 
           <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
             <p className="text-orange-900 font-bold text-sm">
-              Registration was blocked. If this is a different child, retake the photos and try again. Otherwise, use the Verify screen instead of Register.
+              Registration was blocked. If this is a different child, retake the photo and try again. Otherwise, use the Verify screen instead of Register.
             </p>
           </div>
 
@@ -467,7 +415,7 @@ export function Register() {
               Done — Return Home
             </Button>
             <Button variant="outline" onClick={resetFlow} className="w-full h-14 text-lg">
-              <RefreshCw className="mr-2 h-5 w-5" /> Retake Photos &amp; Try Again
+              <RefreshCw className="mr-2 h-5 w-5" /> Retake Photo &amp; Try Again
             </Button>
           </div>
         </div>
@@ -480,7 +428,6 @@ export function Register() {
     <Layout>
       <div className="p-4 md:p-8 max-w-2xl mx-auto w-full">
         <header className="mb-6">
-          {/* New child indicator */}
           <div className="bg-blue-600 text-white rounded-xl p-3 flex items-center gap-3 mb-4 shadow">
             <CheckCircle2 className="w-7 h-7 shrink-0" />
             <div>
@@ -492,18 +439,11 @@ export function Register() {
           <p className="text-gray-600 font-medium">Enter personal details to complete registration</p>
         </header>
 
-        {/* Captured photo thumbnails */}
         <div className="flex gap-3 mb-6">
           {faceImage && (
             <div className="flex flex-col items-center gap-1">
               <img src={faceImage} alt="Face" className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200" />
               <span className="text-xs font-bold text-gray-500 uppercase">Face</span>
-            </div>
-          )}
-          {earImage && (
-            <div className="flex flex-col items-center gap-1">
-              <img src={earImage} alt="Profile" className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200" />
-              <span className="text-xs font-bold text-gray-500 uppercase">Profile</span>
             </div>
           )}
           <Button
@@ -516,7 +456,6 @@ export function Register() {
           </Button>
         </div>
 
-        {/* GPS coordinates — auto-populated */}
         <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-start gap-3">
           <MapPin className="w-5 h-5 text-primary mt-0.5 shrink-0" />
           <div className="flex-1">

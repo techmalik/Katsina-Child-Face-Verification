@@ -9,8 +9,6 @@
 export interface VerificationInput {
   /** Base64-encoded frontal face image */
   face_image: string;
-  /** Base64-encoded profile/ear image */
-  ear_image: string;
   /** @nullable */
   gps_lat?: number | null;
   /** @nullable */

@@ -28,7 +28,7 @@ export function Home() {
             <div>
               <h3 className="text-3xl font-black">Register Child</h3>
               <p className="text-white/80 font-medium mt-1 text-lg">
-                Scan face &amp; ear — checks for duplicates automatically
+                Scan face — checks for duplicates automatically
               </p>
             </div>
           </div>

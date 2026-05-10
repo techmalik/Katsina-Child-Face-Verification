@@ -20,7 +20,6 @@ export const HealthCheckResponse = zod.object({
  */
 export const VerifyChildBody = zod.object({
   face_image: zod.string().describe("Base64-encoded frontal face image"),
-  ear_image: zod.string().describe("Base64-encoded profile\/ear image"),
   gps_lat: zod.number().nullish(),
   gps_lng: zod.number().nullish(),
 });
@@ -120,8 +119,6 @@ export const ListChildrenResponse = zod.object({
 
 export const registerChildBodyFaceImagesMax = 3;
 
-export const registerChildBodyEarImagesMax = 3;
-
 export const RegisterChildBody = zod.object({
   first_name: zod.string().min(1),
   surname: zod.string().min(1),
@@ -137,11 +134,6 @@ export const RegisterChildBody = zod.object({
     .min(1)
     .max(registerChildBodyFaceImagesMax)
     .describe("Base64-encoded face images (1-3 frontal shots)"),
-  ear_images: zod
-    .array(zod.string())
-    .min(1)
-    .max(registerChildBodyEarImagesMax)
-    .describe("Base64-encoded ear\/profile images (1-3 shots)"),
 });
 
 /**

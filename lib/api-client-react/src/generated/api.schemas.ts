@@ -33,7 +33,7 @@ export interface Child {
    */
   face_photo?: string | null;
   /**
-   * Base64-encoded ear thumbnail for display
+   * Base64-encoded ear thumbnail for display (legacy)
    * @nullable
    */
   ear_photo?: string | null;
@@ -66,12 +66,6 @@ export interface ChildInput {
    * @maxItems 3
    */
   face_images: string[];
-  /**
-   * Base64-encoded ear/profile images (1-3 shots)
-   * @minItems 1
-   * @maxItems 3
-   */
-  ear_images: string[];
 }
 
 export interface ChildrenList {
@@ -82,8 +76,6 @@ export interface ChildrenList {
 export interface VerificationInput {
   /** Base64-encoded frontal face image */
   face_image: string;
-  /** Base64-encoded profile/ear image */
-  ear_image: string;
   /** @nullable */
   gps_lat?: number | null;
   /** @nullable */
@@ -106,7 +98,7 @@ export interface VerificationResult {
   /** new = first visit, match = already verified, review = needs supervisor */
   status: VerificationResultStatus;
   /**
-   * Fused match confidence score 0-1
+   * Face match confidence score 0-1
    * @nullable
    */
   confidence?: number | null;
@@ -201,7 +193,7 @@ export interface ChildPhotos {
    */
   face_photo: string | null;
   /**
-   * Base64-encoded ear thumbnail
+   * Base64-encoded ear thumbnail (legacy)
    * @nullable
    */
   ear_photo: string | null;

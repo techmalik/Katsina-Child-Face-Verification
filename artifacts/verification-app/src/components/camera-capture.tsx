@@ -232,7 +232,9 @@ export function CameraCapture({
               playsInline
               muted
               className="w-full h-full object-cover"
-              style={ready ? { clipPath: getClipPath(overlayType) } : undefined}
+              style={ready
+                ? { clipPath: getClipPath(overlayType), transform: "scaleX(-1)" }
+                : { transform: "scaleX(-1)" }}
             />
             {ready && (
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">

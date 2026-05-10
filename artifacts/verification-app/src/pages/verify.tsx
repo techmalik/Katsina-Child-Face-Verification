@@ -7,37 +7,29 @@ import { CheckCircle, XCircle, AlertTriangle, ArrowLeft } from "lucide-react";
 
 export function Verify() {
   const [, setLocation] = useLocation();
-  const [step, setStep] = useState<"face" | "ear" | "submitting" | "result">("face");
+  const [step, setStep] = useState<"face" | "submitting" | "result">("face");
   const [faceImage, setFaceImage] = useState<string | null>(null);
-  const [earImage, setEarImage] = useState<string | null>(null);
-  
+
   const verifyMutation = useVerifyChild();
 
   const handleFaceCapture = (base64: string) => {
     setFaceImage(base64);
-    setStep("ear");
+    submitVerification(base64);
   };
 
-  const handleEarCapture = (base64: string) => {
-    setEarImage(base64);
-    submitVerification(faceImage!, base64);
-  };
-
-  const submitVerification = (face: string, ear: string) => {
+  const submitVerification = (face: string) => {
     setStep("submitting");
     verifyMutation.mutate(
       {
         data: {
           face_image: face,
-          ear_image: ear,
-          // mock gps coordinates
-          gps_lat: 12.9816,
-          gps_lng: 7.6222
-        }
+          gps_lat: null,
+          gps_lng: null,
+        } as any,
       },
       {
         onSuccess: () => setStep("result"),
-        onError: () => setStep("result") // Handle error in result view for simplicity in this demo
+        onError: () => setStep("result"),
       }
     );
   };
@@ -50,22 +42,10 @@ export function Verify() {
     return (
       <CameraCapture
         key="face"
-        title="1. Face Photo" 
-        subtitle="Look straight at the camera" 
-        overlayType="face" 
-        onCapture={handleFaceCapture} 
-      />
-    );
-  }
-
-  if (step === "ear") {
-    return (
-      <CameraCapture
-        key="ear"
-        title="2. Profile / Ear Photo" 
-        subtitle="Turn head to the side" 
-        overlayType="ear" 
-        onCapture={handleEarCapture} 
+        title="Face Photo"
+        subtitle="Look straight at the camera"
+        overlayType="face"
+        onCapture={handleFaceCapture}
       />
     );
   }
@@ -80,12 +60,11 @@ export function Verify() {
     );
   }
 
-  // Result Screen
   const isError = verifyMutation.isError;
   const result = verifyMutation.data;
-  
+
   const status = isError ? "error" : result?.status;
-  
+
   let bgColor = "bg-gray-900";
   let icon = <AlertTriangle className="w-32 h-32 text-white mb-8" />;
   let title = "SYSTEM ERROR";
@@ -111,11 +90,11 @@ export function Verify() {
   return (
     <div className={`min-h-screen flex flex-col items-center justify-center p-8 text-center ${bgColor}`}>
       {icon}
-      
+
       <h1 className="text-5xl font-black text-white mb-6 tracking-tight leading-tight uppercase">
         {title}
       </h1>
-      
+
       <p className="text-2xl font-bold text-white/90 mb-12 max-w-md">
         {message}
       </p>
@@ -131,20 +110,20 @@ export function Verify() {
 
       <div className="w-full max-w-sm space-y-4">
         {status === "new" && (
-          <Button 
-            onClick={() => setLocation("/register")} 
+          <Button
+            onClick={() => setLocation("/register")}
             className="w-full h-20 text-2xl font-bold bg-white text-destructive hover:bg-gray-100"
           >
             Register This Child
           </Button>
         )}
-        
-        <Button 
-          onClick={handleDone} 
+
+        <Button
+          onClick={handleDone}
           variant={status === "new" ? "outline" : "default"}
           className={`w-full h-20 text-2xl font-bold ${
-            status === "new" 
-              ? "border-white text-white hover:bg-white/10" 
+            status === "new"
+              ? "border-white text-white hover:bg-white/10"
               : "bg-white text-black hover:bg-gray-100"
           }`}
         >

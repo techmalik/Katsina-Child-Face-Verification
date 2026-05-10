@@ -31,10 +31,4 @@ export interface ChildInput {
    * @maxItems 3
    */
   face_images: string[];
-  /**
-   * Base64-encoded ear/profile images (1-3 shots)
-   * @minItems 1
-   * @maxItems 3
-   */
-  ear_images: string[];
 }

@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 
 const router = Router();
 const FACE_SERVICE_URL = process.env.FACE_SERVICE_URL ?? "http://localhost:8000";
-const THRESHOLD_REVIEW = 0.48;
+const THRESHOLD_DUPLICATE = 0.38;
 
 function vecStr(v: number[]): string {
   return `[${v.join(",")}]`;
@@ -56,7 +56,6 @@ router.post("/", async (req, res) => {
     gps_lat,
     gps_lng,
     face_images,
-    ear_images,
   } = req.body ?? {};
 
   if (!first_name || !surname || !guardian_name || !date_of_birth || !lga || !village) {
@@ -65,16 +64,13 @@ router.post("/", async (req, res) => {
   if (!Array.isArray(face_images) || face_images.length === 0) {
     return res.status(400).json({ error: "At least one face image is required" });
   }
-  if (!Array.isArray(ear_images) || ear_images.length === 0) {
-    return res.status(400).json({ error: "At least one ear image is required" });
-  }
 
   let embResult: any;
   try {
     const resp = await fetch(`${FACE_SERVICE_URL}/embed/batch`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ face_images, ear_images }),
+      body: JSON.stringify({ face_images }),
       signal: AbortSignal.timeout(60_000),
     });
     if (!resp.ok) throw new Error(`Face service HTTP ${resp.status}`);
@@ -84,7 +80,6 @@ router.post("/", async (req, res) => {
   }
 
   const faceEmb = embResult.face_embeddings[0] as number[] | undefined;
-  const earEmb = embResult.ear_embeddings[0] as number[] | undefined;
 
   if (!faceEmb || !embResult.face_detected[0]) {
     return res
@@ -95,34 +90,18 @@ router.post("/", async (req, res) => {
   const candidates = await pool.query<{
     child_id: number;
     face_dist: number;
-    ear_dist: number | null;
   }>(
-    `WITH face_cands AS (
-       SELECT child_id, MIN(embedding <=> $1::vector) AS face_dist
-       FROM child_biometrics WHERE modality = 'face'
-       GROUP BY child_id ORDER BY face_dist ASC LIMIT 10
-     ),
-     ear_dists AS (
-       SELECT child_id, MIN(embedding <=> $2::vector) AS ear_dist
-       FROM child_biometrics
-       WHERE modality = 'ear' AND child_id IN (SELECT child_id FROM face_cands)
-       GROUP BY child_id
-     )
-     SELECT fc.child_id, fc.face_dist, ed.ear_dist
-     FROM face_cands fc
-     LEFT JOIN ear_dists ed ON fc.child_id = ed.child_id
-     ORDER BY (0.6 * fc.face_dist + 0.4 * COALESCE(ed.ear_dist, fc.face_dist)) ASC
-     LIMIT 1`,
-    [vecStr(faceEmb), earEmb ? vecStr(earEmb) : vecStr(faceEmb)],
+    `SELECT child_id, MIN(embedding <=> $1::vector) AS face_dist
+     FROM child_biometrics WHERE modality = 'face'
+     GROUP BY child_id ORDER BY face_dist ASC LIMIT 1`,
+    [vecStr(faceEmb)],
   );
 
   const best = candidates.rows[0] ?? null;
   if (best) {
     const faceSim = Math.max(0, 1 - best.face_dist);
-    const earSim = Math.max(0, 1 - (best.ear_dist ?? best.face_dist));
-    const fusedSim = 0.6 * faceSim + 0.4 * earSim;
 
-    if (fusedSim >= THRESHOLD_REVIEW) {
+    if (faceSim >= THRESHOLD_DUPLICATE) {
       const rows = await db
         .select()
         .from(childrenTable)
@@ -143,15 +122,13 @@ router.post("/", async (req, res) => {
       return res.status(409).json({
         error: "Likely duplicate registration detected",
         matched_child: matchedChild,
-        confidence: fusedSim,
+        confidence: faceSim,
       });
     }
   }
 
   const facePhoto =
     face_images[0] && face_images[0].length < 300_000 ? face_images[0] : null;
-  const earPhoto =
-    ear_images[0] && ear_images[0].length < 300_000 ? ear_images[0] : null;
 
   const [child] = await db
     .insert(childrenTable)
@@ -166,7 +143,7 @@ router.post("/", async (req, res) => {
       gps_lat: gps_lat ?? null,
       gps_lng: gps_lng ?? null,
       face_photo: facePhoto,
-      ear_photo: earPhoto,
+      ear_photo: null,
     })
     .returning();
 
@@ -178,14 +155,6 @@ router.post("/", async (req, res) => {
         [child.id, i, `[${embResult.face_embeddings[i].join(",")}]`],
       );
     }
-  }
-
-  for (let i = 0; i < embResult.ear_embeddings.length; i++) {
-    await pool.query(
-      `INSERT INTO child_biometrics (child_id, photo_index, modality, embedding)
-       VALUES ($1, $2, 'ear', $3::vector)`,
-      [child.id, i, `[${embResult.ear_embeddings[i].join(",")}]`],
-    );
   }
 
   return res.status(201).json({

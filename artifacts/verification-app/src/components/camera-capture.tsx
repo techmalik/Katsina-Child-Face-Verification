@@ -62,14 +62,18 @@ function getFrameBrightness(video: HTMLVideoElement): number {
   }
 }
 
-// Oval overlay dimensions in CSS pixels (matching Tailwind classes below)
 const OVAL = {
-  face: { w: 256, h: 320, dx: 0 },  // w-64 h-80, centered
-  ear:  { w: 160, h: 256, dx: 32 }, // w-40 h-64, translate-x-8
+  face: { w: 256, h: 320, dx: 0,  borderRadius: "40%" as const },
+  ear:  { w: 160, h: 256, dx: 32, borderRadius: "30%" as const },
 } as const;
 
-// Padding factor around the oval bounds when cropping (5% each side)
-const CROP_PADDING = 1.10;
+function getClipPath(type: "face" | "ear"): string {
+  const { w, h, dx } = OVAL[type];
+  const rx = w / 2;
+  const ry = h / 2;
+  const cx = dx === 0 ? "50%" : `calc(50% + ${dx}px)`;
+  return `ellipse(${rx}px ${ry}px at ${cx} 50%)`;
+}
 
 function computeCrop(
   video: HTMLVideoElement,
@@ -80,30 +84,21 @@ function computeCrop(
   const elemW  = video.clientWidth  || videoW;
   const elemH  = video.clientHeight || videoH;
 
-  // object-cover: scale so the video completely covers the element
   const scale   = Math.max(elemW / videoW, elemH / videoH);
-  // How many scaled-video pixels are hidden (letterbox offset)
   const offsetX = (videoW * scale - elemW) / 2;
   const offsetY = (videoH * scale - elemH) / 2;
 
   const oval = OVAL[overlayType];
-
-  // Oval centre in element CSS pixels
   const cx = elemW / 2 + oval.dx;
   const cy = elemH / 2;
 
-  // Oval bounds with padding, in element CSS pixels
-  const halfW = (oval.w / 2) * CROP_PADDING;
-  const halfH = (oval.h / 2) * CROP_PADDING;
-
-  // Map element CSS px → video source px
   const toVx = (ex: number) => (ex + offsetX) / scale;
   const toVy = (ey: number) => (ey + offsetY) / scale;
 
-  const sx = Math.max(0, toVx(cx - halfW));
-  const sy = Math.max(0, toVy(cy - halfH));
-  const sw = Math.min(videoW, toVx(cx + halfW)) - sx;
-  const sh = Math.min(videoH, toVy(cy + halfH)) - sy;
+  const sx = Math.max(0, toVx(cx - oval.w / 2));
+  const sy = Math.max(0, toVy(cy - oval.h / 2));
+  const sw = Math.min(videoW, toVx(cx + oval.w / 2)) - sx;
+  const sh = Math.min(videoH, toVy(cy + oval.h / 2)) - sy;
 
   return { sx, sy, sw, sh };
 }
@@ -216,13 +211,17 @@ export function CameraCapture({
             </Button>
           </div>
         ) : capturedImage ? (
-          /* ── Captured preview — show the cropped image centred ── */
-          <div className="w-full h-full flex items-center justify-center bg-black">
+          <div className="w-full h-full flex items-center justify-center">
             <img
               src={capturedImage}
               alt="Captured"
-              style={{ width: oval.w, height: oval.h }}
-              className="object-cover rounded-[40%] border-4 border-white shadow-[0_0_0_9999px_black]"
+              style={{
+                width: oval.w,
+                height: oval.h,
+                borderRadius: oval.borderRadius,
+                border: "4px solid white",
+              }}
+              className="object-cover"
             />
           </div>
         ) : (
@@ -233,21 +232,19 @@ export function CameraCapture({
               playsInline
               muted
               className="w-full h-full object-cover"
+              style={ready ? { clipPath: getClipPath(overlayType) } : undefined}
             />
             {ready && (
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                {overlayType === "face" && (
-                  <div
-                    className="relative border-4 border-white rounded-[40%] shadow-[0_0_0_9999px_black]"
-                    style={{ width: oval.w, height: oval.h }}
-                  />
-                )}
-                {overlayType === "ear" && (
-                  <div
-                    className="relative border-4 border-white rounded-[30%] shadow-[0_0_0_9999px_black]"
-                    style={{ width: oval.w, height: oval.h, transform: `translateX(${oval.dx}px)` }}
-                  />
-                )}
+                <div
+                  className="border-4 border-white"
+                  style={{
+                    width: oval.w,
+                    height: oval.h,
+                    borderRadius: oval.borderRadius,
+                    transform: oval.dx ? `translateX(${oval.dx}px)` : undefined,
+                  }}
+                />
               </div>
             )}
 

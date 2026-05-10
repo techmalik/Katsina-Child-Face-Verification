@@ -63,8 +63,8 @@ function getFrameBrightness(video: HTMLVideoElement): number {
 }
 
 const OVAL = {
-  face: { w: 256, h: 320, dx: 0,  borderRadius: "40%" as const },
-  ear:  { w: 160, h: 256, dx: 32, borderRadius: "30%" as const },
+  face: { w: 256, h: 320, dx: 0,  borderRadius: "50%" as const },
+  ear:  { w: 160, h: 256, dx: 32, borderRadius: "50%" as const },
 } as const;
 
 function getClipPath(type: "face" | "ear"): string {
@@ -165,8 +165,8 @@ export function CameraCapture({
 
     const { sx, sy, sw, sh } = computeCrop(video, overlayType);
 
-    canvas.width  = Math.round(sw);
-    canvas.height = Math.round(sh);
+    canvas.width  = Math.max(1, Math.round(sw));
+    canvas.height = Math.max(1, Math.round(sh));
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);

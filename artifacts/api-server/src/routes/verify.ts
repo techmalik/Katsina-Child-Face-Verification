@@ -7,46 +7,88 @@ const router = Router();
 const FACE_SERVICE_URL = process.env.FACE_SERVICE_URL ?? "http://localhost:8000";
 const THRESHOLD_MATCH = 0.55;
 const THRESHOLD_REVIEW = 0.38;
+const DET_THRESHOLD = 0.6;
+const LIVENESS_THRESHOLD = 0.3;
 
 function vecStr(v: number[]): string {
   return `[${v.join(",")}]`;
 }
 
-async function fetchFaceEmbedding(faceImage: string) {
+function l2normalize(v: number[]): number[] {
+  const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0));
+  return norm > 1e-8 ? v.map((x) => x / norm) : v;
+}
+
+interface BatchEmbedResult {
+  face_embeddings: number[][];
+  face_detected: boolean[];
+  det_scores: number[];
+  liveness_scores: number[];
+}
+
+async function fetchEmbeddings(faceImages: string[]): Promise<BatchEmbedResult> {
   const resp = await fetch(`${FACE_SERVICE_URL}/embed/batch`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ face_images: [faceImage] }),
+    body: JSON.stringify({ face_images: faceImages }),
     signal: AbortSignal.timeout(30_000),
   });
   if (!resp.ok) throw new Error(`Face service HTTP ${resp.status}`);
-  return resp.json() as Promise<{
-    face_embeddings: number[][];
-    face_detected: boolean[];
-  }>;
+  return resp.json() as Promise<BatchEmbedResult>;
 }
 
 router.post("/", async (req, res) => {
-  const { face_image, gps_lat, gps_lng } = req.body ?? {};
+  const { face_images, gps_lat, gps_lng } = req.body ?? {};
 
-  if (!face_image) {
-    return res.status(400).json({ error: "face_image is required" });
+  if (!Array.isArray(face_images) || face_images.length === 0) {
+    return res.status(400).json({ error: "face_images is required" });
   }
 
-  let emb: Awaited<ReturnType<typeof fetchFaceEmbedding>>;
+  let emb: BatchEmbedResult;
   try {
-    emb = await fetchFaceEmbedding(face_image);
+    emb = await fetchEmbeddings(face_images);
   } catch (err: any) {
     return res.status(503).json({ error: `Face service unavailable: ${err.message}` });
   }
 
-  const faceEmb = emb.face_embeddings[0];
+  // Collect valid (detected) frames with their scores
+  const validFrames = emb.face_detected
+    .map((detected, i) => ({
+      detected,
+      det: emb.det_scores[i],
+      liveness: emb.liveness_scores[i],
+      embedding: emb.face_embeddings[i],
+    }))
+    .filter((f) => f.detected);
 
-  if (!emb.face_detected[0]) {
+  if (validFrames.length === 0) {
     return res
       .status(400)
       .json({ error: "No face detected. Please retake the photo in good light." });
   }
+
+  // Gate on best frame scores (most lenient — at least one frame must pass)
+  const bestDet = Math.max(...validFrames.map((f) => f.det));
+  const bestLiveness = Math.max(...validFrames.map((f) => f.liveness));
+
+  if (bestDet < DET_THRESHOLD) {
+    return res.status(400).json({
+      error:
+        "Photo quality too low — move closer, ensure good lighting, and hold still.",
+    });
+  }
+  if (bestLiveness < LIVENESS_THRESHOLD) {
+    return res.status(400).json({
+      error:
+        "Photo quality too low — ensure the face is well-lit and in focus.",
+    });
+  }
+
+  // Average all valid frame embeddings for a stable representation
+  const avgRaw = validFrames[0].embedding.map((_, j) =>
+    validFrames.reduce((s, f) => s + f.embedding[j], 0) / validFrames.length,
+  );
+  const faceEmb = l2normalize(avgRaw);
 
   const candidates = await pool.query<{
     child_id: number;
@@ -89,6 +131,8 @@ router.post("/", async (req, res) => {
   const reviewStatus =
     status === "match" ? "clear" : status === "review" ? "needs_review" : "clear";
 
+  const capturePhoto = face_images[0] && face_images[0].length < 500_000 ? face_images[0] : null;
+
   const [verif] = await db
     .insert(verificationsTable)
     .values({
@@ -97,7 +141,7 @@ router.post("/", async (req, res) => {
       ear_score: null,
       fused_score: best ? faceSim : null,
       review_status: reviewStatus,
-      capture_photo: face_image.length < 500_000 ? face_image : null,
+      capture_photo: capturePhoto,
       gps_lat: gps_lat ?? null,
       gps_lng: gps_lng ?? null,
     })

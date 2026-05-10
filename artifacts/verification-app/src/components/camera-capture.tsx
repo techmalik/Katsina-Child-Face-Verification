@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Camera, RefreshCw, Check, Sun, SunDim } from "lucide-react";
 
 interface CameraCaptureProps {
-  onCapture: (base64Image: string) => void;
+  onCapture: (images: string[]) => void;
   overlayType?: "face" | "ear";
   title?: string;
   subtitle?: string;
@@ -103,6 +103,9 @@ function computeCrop(
   return { sx, sy, sw, sh };
 }
 
+const FRAME_COUNT = 3;
+const FRAME_INTERVAL_MS = 300;
+
 export function CameraCapture({
   onCapture,
   overlayType = "face",
@@ -113,10 +116,14 @@ export function CameraCapture({
   const canvasRef   = useRef<HTMLCanvasElement>(null);
   const streamRef   = useRef<MediaStream | null>(null);
   const brightnessIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const capturedFramesRef = useRef<string[]>([]);
+
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [error,  setError]  = useState<string | null>(null);
   const [ready,  setReady]  = useState(false);
   const [brightness, setBrightness] = useState<number>(128);
+  const [capturing, setCapturing] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -132,6 +139,8 @@ export function CameraCapture({
   const startCamera = useCallback(async () => {
     setError(null);
     setReady(false);
+    setCapturedImage(null);
+    capturedFramesRef.current = [];
     try {
       const ms = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -158,33 +167,59 @@ export function CameraCapture({
     return stopCamera;
   }, [startCamera, stopCamera]);
 
-  const handleCapture = () => {
+  const captureFrame = useCallback((): string | null => {
     const video  = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas) return;
-
+    if (!video || !canvas) return null;
     const { sx, sy, sw, sh } = computeCrop(video, overlayType);
-
     canvas.width  = Math.max(1, Math.round(sw));
     canvas.height = Math.max(1, Math.round(sh));
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) return null;
     ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-    const base64 = canvas.toDataURL("image/jpeg", 0.85);
-    setCapturedImage(base64);
-    stopCamera();
+    return canvas.toDataURL("image/jpeg", 0.85);
+  }, [overlayType]);
+
+  const handleCapture = useCallback(async () => {
+    if (!ready || capturing) return;
+
+    setCapturing(true);
+    capturedFramesRef.current = [];
     playBeep("shutter");
-  };
+
+    const frames: string[] = [];
+
+    // Frame 1 — immediate
+    const f1 = captureFrame();
+    if (f1) frames.push(f1);
+    setCountdown(FRAME_COUNT - 1);
+
+    // Remaining frames at FRAME_INTERVAL_MS intervals
+    for (let i = 1; i < FRAME_COUNT; i++) {
+      await new Promise<void>((r) => setTimeout(r, FRAME_INTERVAL_MS));
+      const frame = captureFrame();
+      if (frame) frames.push(frame);
+      setCountdown(FRAME_COUNT - 1 - i === 0 ? null : FRAME_COUNT - 1 - i);
+    }
+
+    stopCamera();
+    capturedFramesRef.current = frames;
+    setCapturedImage(frames[0] ?? null);
+    setCapturing(false);
+  }, [ready, capturing, captureFrame, stopCamera]);
 
   const handleRetake = () => {
     setCapturedImage(null);
+    setCountdown(null);
+    capturedFramesRef.current = [];
     startCamera();
   };
 
   const handleConfirm = () => {
-    if (capturedImage) {
+    const frames = capturedFramesRef.current;
+    if (frames.length > 0) {
       playBeep("success");
-      onCapture(capturedImage);
+      onCapture(frames);
     }
   };
 
@@ -250,7 +285,17 @@ export function CameraCapture({
               </div>
             )}
 
-            {ready && (
+            {/* Countdown overlay shown while capturing multi-frame burst */}
+            {capturing && countdown !== null && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center z-20 pointer-events-none">
+                <div className="bg-black/70 rounded-full w-24 h-24 flex items-center justify-center mb-3">
+                  <span className="text-white text-5xl font-black">{countdown}</span>
+                </div>
+                <p className="text-white font-bold text-xl tracking-wide">Hold still…</p>
+              </div>
+            )}
+
+            {ready && !capturing && (
               <div className="absolute top-20 right-4 z-20 flex items-center gap-1.5 bg-black/60 rounded-full px-3 py-1.5 pointer-events-none">
                 {lightLevel === "good" ? (
                   <Sun className="w-4 h-4 text-green-400" />
@@ -292,7 +337,7 @@ export function CameraCapture({
         ) : (
           <button
             onClick={handleCapture}
-            disabled={!ready}
+            disabled={!ready || capturing}
             className="w-20 h-20 rounded-full bg-white border-4 border-gray-400 flex items-center justify-center active:scale-95 transition-transform disabled:opacity-50"
           >
             <Camera className="h-8 w-8 text-black" />

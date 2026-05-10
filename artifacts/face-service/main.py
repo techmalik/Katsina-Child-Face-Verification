@@ -1,7 +1,14 @@
 """
 Katsina State Child Verification — Face Embedding Service
 Uses InsightFace (ArcFace backbone, buffalo_l model) for face embeddings.
-Face-only matching; ear capture has been removed.
+
+Quality scoring:
+  det_score   — InsightFace face detection confidence (0–1, real model output).
+                Gate at >= 0.6 to reject blurry/small/occluded captures.
+  liveness_score — Heuristic quality proxy (sharpness + luminance texture).
+                NOTE: This is NOT a true anti-spoofing model; buffalo_l does
+                not include one. A high score does not guarantee a live face.
+                The infrastructure is in place for future model integration.
 """
 
 import os
@@ -15,7 +22,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from PIL import Image
-import insightface
 from insightface.app import FaceAnalysis
 
 logging.basicConfig(level=logging.INFO)
@@ -32,7 +38,6 @@ def _ensure_models():
     if face_app is not None:
         return
     if _models_loading:
-        import time
         while _models_loading:
             time.sleep(0.1)
         return
@@ -52,7 +57,7 @@ def _ensure_models():
 
 app = FastAPI(
     title="Katsina Biometric Face Service",
-    version="0.2.0",
+    version="0.3.0",
 )
 
 app.add_middleware(
@@ -82,20 +87,60 @@ def normalise(vec: np.ndarray) -> list[float]:
     return (vec / norm).tolist()
 
 
-def extract_face_embedding(img_rgb: np.ndarray) -> list[float] | None:
+def compute_liveness_score(img_rgb: np.ndarray, bbox) -> float:
     """
-    Detect the largest face and return its 512-d ArcFace embedding.
+    Heuristic quality/liveness proxy based on face-region sharpness and texture.
+    Returns 0–1 (higher = better quality capture).
+
+    Catches blurry / under-exposed frames but cannot distinguish a live face
+    from a clear printed photo — a dedicated anti-spoofing model is needed for
+    that and can be wired in here once available.
+    """
+    h, w = img_rgb.shape[:2]
+    x1 = int(max(0, bbox[0]))
+    y1 = int(max(0, bbox[1]))
+    x2 = int(min(w, bbox[2]))
+    y2 = int(min(h, bbox[3]))
+    face_crop = img_rgb[y1:y2, x1:x2]
+    if face_crop.size == 0:
+        return 0.0
+
+    gray = np.mean(face_crop, axis=2).astype(float)
+
+    # Laplacian variance (sharpness) — normalised to [0, 1]
+    pad = np.pad(gray, 1, mode="reflect")
+    lap = (
+        pad[:-2, 1:-1] + pad[2:, 1:-1] +
+        pad[1:-1, :-2] + pad[1:-1, 2:] -
+        4 * pad[1:-1, 1:-1]
+    )
+    sharpness = min(1.0, float(np.var(lap)) / 500.0)
+
+    # Luminance texture richness — normalised to [0, 1]
+    texture = min(1.0, float(np.std(gray)) / 45.0)
+
+    return 0.6 * sharpness + 0.4 * texture
+
+
+def extract_face_result(img_rgb: np.ndarray) -> dict | None:
+    """
+    Detect the largest face and return a dict with:
+      embedding     — L2-normalised 512-d ArcFace vector
+      det_score     — InsightFace detection confidence (real model output)
+      liveness_score — heuristic quality proxy (see compute_liveness_score)
     Returns None if no face is detected.
     """
     _ensure_models()
-    # InsightFace expects BGR
     img_bgr = img_rgb[:, :, ::-1].copy()
     faces = face_app.get(img_bgr)
     if not faces:
         return None
-    # Pick the largest face by bounding-box area
     best = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
-    return normalise(best.embedding)
+    return {
+        "embedding": normalise(best.embedding),
+        "det_score": float(best.det_score),
+        "liveness_score": compute_liveness_score(img_rgb, best.bbox),
+    }
 
 
 # ── request / response models ─────────────────────────────────────────────────
@@ -107,6 +152,8 @@ class EmbedRequest(BaseModel):
 class EmbedResponse(BaseModel):
     embedding: list[float]
     detected: bool
+    det_score: float
+    liveness_score: float
 
 
 class BatchEmbedRequest(BaseModel):
@@ -116,6 +163,8 @@ class BatchEmbedRequest(BaseModel):
 class BatchEmbedResponse(BaseModel):
     face_embeddings: list[list[float]]
     face_detected: list[bool]
+    det_scores: list[float]
+    liveness_scores: list[float]
 
 
 # ── routes ────────────────────────────────────────────────────────────────────
@@ -133,45 +182,68 @@ def embed_face(req: EmbedRequest):
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Cannot decode image: {exc}")
 
-    embedding = extract_face_embedding(img)
-    if embedding is None:
-        embedding = [0.0] * 512
-        detected = False
+    result = extract_face_result(img)
+    if result is None:
+        embedding, det_score, liveness_score, detected = [0.0] * 512, 0.0, 0.0, False
     else:
+        embedding = result["embedding"]
+        det_score = result["det_score"]
+        liveness_score = result["liveness_score"]
         detected = True
 
     ms = round((time.perf_counter() - t0) * 1000)
-    logger.info("embed_face detected=%s latency=%dms", detected, ms)
-    return EmbedResponse(embedding=embedding, detected=detected)
+    logger.info("embed_face detected=%s det=%.2f live=%.2f latency=%dms",
+                detected, det_score, liveness_score, ms)
+    return EmbedResponse(
+        embedding=embedding,
+        detected=detected,
+        det_score=det_score,
+        liveness_score=liveness_score,
+    )
 
 
 @app.post("/embed/batch", response_model=BatchEmbedResponse)
 def embed_batch(req: BatchEmbedRequest):
     """
     Process multiple face images in one call.
-    Returns one embedding per image (zero vector + detected=False if no face found).
+    Returns per-image: embedding (zero vector if no face), detected flag,
+    det_score, and liveness_score.
     """
     t0 = time.perf_counter()
 
     face_embeddings: list[list[float]] = []
     face_detected: list[bool] = []
+    det_scores: list[float] = []
+    liveness_scores: list[float] = []
+
     for b64 in req.face_images:
         try:
             img = decode_image(b64)
-            emb = extract_face_embedding(img)
-            if emb is not None:
-                face_embeddings.append(emb)
+            result = extract_face_result(img)
+            if result is not None:
+                face_embeddings.append(result["embedding"])
                 face_detected.append(True)
+                det_scores.append(result["det_score"])
+                liveness_scores.append(result["liveness_score"])
             else:
                 face_embeddings.append([0.0] * 512)
                 face_detected.append(False)
+                det_scores.append(0.0)
+                liveness_scores.append(0.0)
         except Exception:
             face_embeddings.append([0.0] * 512)
             face_detected.append(False)
+            det_scores.append(0.0)
+            liveness_scores.append(0.0)
 
     ms = round((time.perf_counter() - t0) * 1000)
-    logger.info("embed_batch faces=%d latency=%dms", len(face_embeddings), ms)
+    detected_count = sum(face_detected)
+    logger.info("embed_batch total=%d detected=%d latency=%dms",
+                len(face_embeddings), detected_count, ms)
+
     return BatchEmbedResponse(
         face_embeddings=face_embeddings,
         face_detected=face_detected,
+        det_scores=det_scores,
+        liveness_scores=liveness_scores,
     )

@@ -5,9 +5,16 @@ import { eq } from "drizzle-orm";
 const router = Router();
 const FACE_SERVICE_URL = process.env.FACE_SERVICE_URL ?? "http://localhost:8000";
 const THRESHOLD_DUPLICATE = 0.38;
+const DET_THRESHOLD = 0.6;
+const LIVENESS_THRESHOLD = 0.3;
 
 function vecStr(v: number[]): string {
   return `[${v.join(",")}]`;
+}
+
+function l2normalize(v: number[]): number[] {
+  const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0));
+  return norm > 1e-8 ? v.map((x) => x / norm) : v;
 }
 
 router.get("/", async (req, res) => {
@@ -65,7 +72,12 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "At least one face image is required" });
   }
 
-  let embResult: any;
+  let embResult: {
+    face_embeddings: number[][];
+    face_detected: boolean[];
+    det_scores: number[];
+    liveness_scores: number[];
+  };
   try {
     const resp = await fetch(`${FACE_SERVICE_URL}/embed/batch`, {
       method: "POST",
@@ -74,19 +86,48 @@ router.post("/", async (req, res) => {
       signal: AbortSignal.timeout(60_000),
     });
     if (!resp.ok) throw new Error(`Face service HTTP ${resp.status}`);
-    embResult = await resp.json();
+    embResult = (await resp.json()) as typeof embResult;
   } catch (err: any) {
     return res.status(503).json({ error: `Face service unavailable: ${err.message}` });
   }
 
-  const faceEmb = embResult.face_embeddings[0] as number[] | undefined;
+  // Collect valid frames
+  const validFrames = embResult.face_detected
+    .map((detected, i) => ({
+      detected,
+      det: embResult.det_scores[i],
+      liveness: embResult.liveness_scores[i],
+      embedding: embResult.face_embeddings[i],
+    }))
+    .filter((f) => f.detected);
 
-  if (!faceEmb || !embResult.face_detected[0]) {
+  if (validFrames.length === 0) {
     return res
       .status(400)
       .json({ error: "No face detected in the face photo. Please retake in good light." });
   }
 
+  const bestDet = Math.max(...validFrames.map((f) => f.det));
+  const bestLiveness = Math.max(...validFrames.map((f) => f.liveness));
+
+  if (bestDet < DET_THRESHOLD) {
+    return res.status(400).json({
+      error: "Photo quality too low — move closer, ensure good lighting, and hold still.",
+    });
+  }
+  if (bestLiveness < LIVENESS_THRESHOLD) {
+    return res.status(400).json({
+      error: "Photo quality too low — ensure the face is well-lit and in focus.",
+    });
+  }
+
+  // Average all valid embeddings for stable representation
+  const avgRaw = validFrames[0].embedding.map((_, j) =>
+    validFrames.reduce((s, f) => s + f.embedding[j], 0) / validFrames.length,
+  );
+  const avgEmb = l2normalize(avgRaw);
+
+  // Duplicate check using averaged embedding
   const candidates = await pool.query<{
     child_id: number;
     face_dist: number;
@@ -94,7 +135,7 @@ router.post("/", async (req, res) => {
     `SELECT child_id, MIN(embedding <=> $1::vector) AS face_dist
      FROM child_biometrics WHERE modality = 'face'
      GROUP BY child_id ORDER BY face_dist ASC LIMIT 1`,
-    [vecStr(faceEmb)],
+    [vecStr(avgEmb)],
   );
 
   const best = candidates.rows[0] ?? null;
@@ -146,12 +187,13 @@ router.post("/", async (req, res) => {
     })
     .returning();
 
+  // Store each valid frame's embedding separately for richer matching
   for (let i = 0; i < embResult.face_embeddings.length; i++) {
     if (embResult.face_detected[i]) {
       await pool.query(
         `INSERT INTO child_biometrics (child_id, photo_index, modality, embedding)
          VALUES ($1, $2, 'face', $3::vector)`,
-        [child.id, i, `[${embResult.face_embeddings[i].join(",")}]`],
+        [child.id, i, vecStr(embResult.face_embeddings[i])],
       );
     }
   }

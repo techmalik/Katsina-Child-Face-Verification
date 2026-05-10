@@ -1,35 +1,43 @@
 import { useState } from "react";
-import { useLocation, Link } from "wouter";
+import { useLocation } from "wouter";
 import { CameraCapture } from "@/components/camera-capture";
 import { useVerifyChild } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, XCircle, AlertTriangle, ArrowLeft } from "lucide-react";
+import { CheckCircle, XCircle, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 
 export function Verify() {
   const [, setLocation] = useLocation();
   const [step, setStep] = useState<"face" | "submitting" | "result">("face");
-  const [faceImage, setFaceImage] = useState<string | null>(null);
 
   const verifyMutation = useVerifyChild();
 
-  const handleFaceCapture = (base64: string) => {
-    setFaceImage(base64);
-    submitVerification(base64);
-  };
-
-  const submitVerification = (face: string) => {
+  const handleFaceCapture = (images: string[]) => {
     setStep("submitting");
     verifyMutation.mutate(
       {
         data: {
-          face_image: face,
+          face_images: images,
           gps_lat: null,
           gps_lng: null,
         },
       },
       {
         onSuccess: () => setStep("result"),
-        onError: () => setStep("result"),
+        onError: (err: unknown) => {
+          const apiErr = err as { status?: number; data?: { error?: string } };
+          const msg = apiErr?.data?.error ?? "";
+          if (
+            msg.includes("quality") ||
+            msg.includes("Live person") ||
+            msg.includes("No face detected")
+          ) {
+            toast.error(msg, { duration: 5000 });
+            setStep("face");
+          } else {
+            setStep("result");
+          }
+        },
       }
     );
   };

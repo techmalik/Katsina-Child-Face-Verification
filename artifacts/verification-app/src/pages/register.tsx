@@ -59,7 +59,9 @@ type FormValues = z.infer<typeof formSchema>;
 export function Register() {
   const [, setLocation] = useLocation();
   const [step, setStep] = useState<Step>("face");
-  const [faceImage, setFaceImage] = useState<string | null>(null);
+  const [faceImages, setFaceImages] = useState<string[]>([]);
+  const faceImage = faceImages[0] ?? null;
+
   const [verifyResult, setVerifyResult] = useState<VerificationResult | null>(null);
   const [duplicateMatch, setDuplicateMatch] = useState<{ child: Child | null; confidence: number } | null>(null);
   const [gpsLat, setGpsLat] = useState<number | null>(null);
@@ -97,19 +99,19 @@ export function Register() {
 
   const resetFlow = () => {
     setStep("face");
-    setFaceImage(null);
+    setFaceImages([]);
     setVerifyResult(null);
     setDuplicateMatch(null);
     form.reset();
   };
 
-  const handleFaceCapture = (img: string) => {
-    setFaceImage(img);
+  const handleFaceCapture = (images: string[]) => {
+    setFaceImages(images);
     setStep("checking");
     verifyMutation.mutate(
       {
         data: {
-          face_image: img,
+          face_images: images,
           gps_lat: gpsLat,
           gps_lng: gpsLng,
         },
@@ -121,15 +123,29 @@ export function Register() {
           else if (data.status === "review") setStep("review");
           else setStep("new_form");
         },
-        onError: () => {
-          setStep("new_form");
+        onError: (err: unknown) => {
+          const apiErr = err as { status?: number; data?: { error?: string } };
+          const msg = apiErr?.data?.error ?? "";
+          // Quality/liveness rejections — go back to camera with the error shown
+          if (
+            msg.includes("quality") ||
+            msg.includes("Live person") ||
+            msg.includes("No face detected")
+          ) {
+            toast.error(msg, { duration: 5000 });
+            setFaceImages([]);
+            setStep("face");
+          } else {
+            // Network or other error — proceed to form so the field worker isn't blocked
+            setStep("new_form");
+          }
         },
       }
     );
   };
 
   const onSubmit = (data: FormValues) => {
-    if (!faceImage) {
+    if (faceImages.length === 0) {
       toast.error("Face photo is required");
       return;
     }
@@ -145,7 +161,7 @@ export function Register() {
           visible_marks: data.visible_marks ?? null,
           gps_lat: gpsLat,
           gps_lng: gpsLng,
-          face_images: [faceImage],
+          face_images: faceImages,
         },
       },
       {
@@ -162,7 +178,18 @@ export function Register() {
             });
             setStep("duplicate");
           } else {
-            toast.error((apiErr?.data as { error?: string })?.error ?? "Registration failed");
+            const msg = (apiErr?.data as { error?: string })?.error ?? "Registration failed";
+            if (
+              msg.includes("quality") ||
+              msg.includes("Live person") ||
+              msg.includes("No face detected")
+            ) {
+              toast.error(msg, { duration: 5000 });
+              setFaceImages([]);
+              setStep("face");
+            } else {
+              toast.error(msg);
+            }
           }
         },
       }
@@ -449,7 +476,9 @@ export function Register() {
           {faceImage && (
             <div className="flex flex-col items-center gap-1">
               <img src={faceImage} alt="Face" className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200" />
-              <span className="text-xs font-bold text-gray-500 uppercase">Face</span>
+              <span className="text-xs font-bold text-gray-500 uppercase">
+                Face{faceImages.length > 1 ? ` (${faceImages.length} frames)` : ""}
+              </span>
             </div>
           )}
           <Button

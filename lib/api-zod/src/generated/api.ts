@@ -18,8 +18,14 @@ export const HealthCheckResponse = zod.object({
  * Submit face and ear images to check if the child is already registered. Returns a result tier - match, new, or needs human review.
  * @summary Verify a child against the database
  */
+export const verifyChildBodyFaceImagesMax = 3;
+
 export const VerifyChildBody = zod.object({
-  face_image: zod.string().describe("Base64-encoded frontal face image"),
+  face_images: zod
+    .array(zod.string())
+    .min(1)
+    .max(verifyChildBodyFaceImagesMax)
+    .describe("Base64-encoded frontal face images (1-3 frames for embedding averaging)"),
   gps_lat: zod.number().nullish(),
   gps_lng: zod.number().nullish(),
 });

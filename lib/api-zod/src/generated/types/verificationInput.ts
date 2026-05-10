@@ -7,8 +7,12 @@
  */
 
 export interface VerificationInput {
-  /** Base64-encoded frontal face image */
-  face_image: string;
+  /**
+   * Base64-encoded frontal face images (1-3 frames for embedding averaging)
+   * @minItems 1
+   * @maxItems 3
+   */
+  face_images: string[];
   /** @nullable */
   gps_lat?: number | null;
   /** @nullable */

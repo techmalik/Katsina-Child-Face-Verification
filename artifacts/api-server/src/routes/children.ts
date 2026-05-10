@@ -65,12 +65,12 @@ router.get("/", async (req, res) => {
       AND ($5::text IS NULL OR c.date_of_birth::date <= $5::date)
       AND ($6::text IS NULL OR c.created_at >= $6::timestamptz)
       AND ($7::text IS NULL OR c.created_at <= $7::timestamptz)
-      AND ($8::text IS NULL OR EXISTS (
-            SELECT 1 FROM verifications v
-            WHERE v.child_id = c.id AND v.verified_at >= $8::timestamptz))
-      AND ($9::text IS NULL OR EXISTS (
-            SELECT 1 FROM verifications v
-            WHERE v.child_id = c.id AND v.verified_at <= $9::timestamptz))
+      AND ($8::text IS NULL OR (
+            SELECT MAX(v.verified_at) FROM verifications v WHERE v.child_id = c.id
+          ) >= $8::timestamptz)
+      AND ($9::text IS NULL OR (
+            SELECT MAX(v.verified_at) FROM verifications v WHERE v.child_id = c.id
+          ) <= $9::timestamptz)
   `;
 
   const [countRow, dataRows] = await Promise.all([

@@ -12,6 +12,7 @@ import {
 import type { VerificationResult } from "@workspace/api-client-react";
 import { Layout } from "@/components/layout";
 import { CameraCapture } from "@/components/camera-capture";
+import { VillageCombobox } from "@/components/village-combobox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -516,7 +517,13 @@ export function Register() {
                   <FormItem>
                     <FormLabel className="text-base font-bold">Village / Settlement</FormLabel>
                     <FormControl>
-                      <Input placeholder="Enter village name" className="h-14 text-lg" {...field} />
+                      <VillageCombobox
+                        value={field.value}
+                        lga={form.watch("lga")}
+                        onChange={(v) => {
+                          field.onChange(v);
+                        }}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

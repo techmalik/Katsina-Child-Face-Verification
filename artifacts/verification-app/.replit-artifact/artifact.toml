@@ -17,6 +17,10 @@ kind = "web"
   [services.development]
   run = "pnpm --filter @workspace/verification-app run dev"
 
+  [services.production]
+  serve = "static"
+  publicDir = "dist"
+
   [services.env]
   PORT = "5173"
   BASE_PATH = "/"

@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { pool, db, childrenTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { getFaceServiceUrl } from "../lib/config";
 
 const router = Router();
-const FACE_SERVICE_URL = process.env.FACE_SERVICE_URL ?? "http://localhost:8000";
 const THRESHOLD_DUPLICATE = 0.38;
 const DET_THRESHOLD = 0.6;
 const LIVENESS_THRESHOLD = 0.5;
@@ -127,7 +127,7 @@ router.post("/", async (req, res) => {
     liveness_scores: number[];
   };
   try {
-    const resp = await fetch(`${FACE_SERVICE_URL}/embed/batch`, {
+    const resp = await fetch(`${getFaceServiceUrl()}/embed/batch`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ face_images }),

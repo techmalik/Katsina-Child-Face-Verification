@@ -1,14 +1,13 @@
 import { Router, type IRouter } from "express";
+import { getFaceServiceUrl } from "../lib/config";
 
 const router: IRouter = Router();
-
-const FACE_SERVICE_URL = process.env.FACE_SERVICE_URL ?? "http://localhost:8000";
 
 router.get("/face-health", async (_req, res) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3000);
   try {
-    const response = await fetch(`${FACE_SERVICE_URL}/health`, {
+    const response = await fetch(`${getFaceServiceUrl()}/health`, {
       signal: controller.signal,
     });
     if (response.ok) {

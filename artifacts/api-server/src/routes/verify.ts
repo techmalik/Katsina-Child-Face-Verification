@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { pool, db, childrenTable, verificationsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { getFaceServiceUrl } from "../lib/config";
 
 const router = Router();
 
-const FACE_SERVICE_URL = process.env.FACE_SERVICE_URL ?? "http://localhost:8000";
 const THRESHOLD_MATCH = 0.55;
 const THRESHOLD_REVIEW = 0.38;
 const DET_THRESHOLD = 0.6;     // InsightFace SCRFD detection confidence gate
@@ -27,7 +27,7 @@ interface BatchEmbedResult {
 }
 
 async function fetchEmbeddings(faceImages: string[]): Promise<BatchEmbedResult> {
-  const resp = await fetch(`${FACE_SERVICE_URL}/embed/batch`, {
+  const resp = await fetch(`${getFaceServiceUrl()}/embed/batch`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ face_images: faceImages }),

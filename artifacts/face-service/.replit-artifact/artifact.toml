@@ -13,14 +13,3 @@ run = "bash start.sh"
 
 [services.development.env]
 PORT = "8001"
-
-[services.production]
-
-[services.production.run]
-args = ["bash", "start.sh"]
-
-[services.production.run.env]
-PORT = "8001"
-
-[services.production.health.startup]
-path = "/health"

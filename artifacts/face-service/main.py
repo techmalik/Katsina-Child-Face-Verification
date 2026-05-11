@@ -100,6 +100,21 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def startup_preload_models():
+    """Pre-warm InsightFace and anti-spoofing models on service startup.
+
+    InsightFace's buffalo_l pack loads lazily by default.  In production
+    the first real request (a child registration) would block for 30-60 s
+    while models download and initialise, causing an API timeout.  Calling
+    _ensure_models() here moves that cost to the startup phase so every
+    subsequent request is fast.
+    """
+    logger.info("Startup: pre-warming face models…")
+    _ensure_models()
+    logger.info("Startup: face models ready")
+
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def decode_image(b64: str) -> np.ndarray:

@@ -9,12 +9,15 @@ name = "Face Embedding Service"
 paths = ["/face-api"]
 
 [services.development]
-run = "cd artifacts/face-service && python3 -m uvicorn main:app --host 0.0.0.0 --port 8001"
+run = "bash start.sh"
+
+[services.development.env]
+PORT = "8001"
 
 [services.production]
 
 [services.production.run]
-args = ["bash", "-c", "cd artifacts/face-service && python3 -m uvicorn main:app --host 0.0.0.0 --port 8001"]
+args = ["bash", "start.sh"]
 
 [services.production.run.env]
 PORT = "8001"

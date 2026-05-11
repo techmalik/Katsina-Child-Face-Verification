@@ -19,7 +19,7 @@ kind = "web"
 
   [services.production]
   serve = "static"
-  publicDir = "dist"
+  publicDir = "artifacts/verification-app/dist/public"
 
   [services.env]
   PORT = "5173"

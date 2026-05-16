@@ -4,12 +4,13 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080 by default)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
+- `pnpm --filter @workspace/db run push` — initialize `pgvector`, then push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
+- Optional matching env: `FACE_MATCH_THRESHOLD` (default `0.55`), `FACE_REVIEW_THRESHOLD` (default `0.38`), `FACE_DET_THRESHOLD` (default `0.6`), `FACE_MATCH_TOP_K` (default `20`)
 
 ## Stack
 

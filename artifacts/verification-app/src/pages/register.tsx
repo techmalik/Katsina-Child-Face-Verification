@@ -188,7 +188,18 @@ export function Register() {
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
+          if ("status" in result && result.status === "needs_review") {
+            setVerifyResult({
+              status: "review",
+              confidence: result.confidence,
+              child: result.matched_child ?? null,
+              verification_id: result.verification_id,
+            });
+            toast.warning("Registration sent for supervisor review");
+            setStep("review");
+            return;
+          }
           toast.success("Child registered successfully");
           setLocation("/registry");
         },

@@ -1,5 +1,12 @@
 import { Router } from "express";
-import { pool, db, verificationsTable } from "@workspace/db";
+import {
+  pool,
+  db,
+  childrenTable,
+  verificationsTable,
+  pendingRegistrationsTable,
+  type PendingRegistrationEmbedding,
+} from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 const router = Router();
@@ -24,15 +31,49 @@ function buildChild(row: any) {
   };
 }
 
+async function loadChildRecord(childId: number) {
+  const result = await pool.query(
+    `SELECT c.*,
+            (SELECT COUNT(*)::text FROM verifications v WHERE v.child_id = c.id) AS verification_count
+     FROM children c WHERE c.id = $1`,
+    [childId],
+  );
+
+  const child = result.rows[0];
+  if (!child) return null;
+
+  return {
+    ...child,
+    created_at: child.created_at.toISOString(),
+    verification_count: parseInt(child.verification_count, 10),
+  };
+}
+
+function vecStr(v: number[]): string {
+  return `[${v.join(",")}]`;
+}
+
+async function storePendingEmbeddings(childId: number, embeddings: PendingRegistrationEmbedding[]) {
+  for (const item of embeddings) {
+    await pool.query(
+      `INSERT INTO child_biometrics (child_id, photo_index, modality, embedding)
+       VALUES ($1, $2, 'face', $3::vector)`,
+      [childId, item.photo_index, vecStr(item.embedding)],
+    );
+  }
+}
+
 router.get("/review-queue", async (_req, res) => {
   const result = await pool.query(
     `SELECT v.*,
+            pr.id AS pending_registration_id,
             c.id AS c_id, c.first_name, c.surname, c.guardian_name,
             c.date_of_birth, c.lga, c.village, c.visible_marks,
             c.gps_lat AS c_gps_lat, c.gps_lng AS c_gps_lng,
             c.face_photo, c.ear_photo, c.created_at AS c_created_at,
             (SELECT COUNT(*)::text FROM verifications v2 WHERE v2.child_id = c.id) AS vc
      FROM verifications v
+     LEFT JOIN pending_registrations pr ON pr.verification_id = v.id
      LEFT JOIN children c ON v.child_id = c.id
      WHERE v.review_status = 'needs_review'
      ORDER BY v.verified_at DESC`,
@@ -41,6 +82,7 @@ router.get("/review-queue", async (_req, res) => {
   return res.json(
     result.rows.map((row: any) => ({
       verification_id: row.id,
+      pending_registration_id: row.pending_registration_id,
       verified_at: row.verified_at.toISOString(),
       gps_lat: row.gps_lat,
       gps_lng: row.gps_lng,
@@ -124,9 +166,61 @@ router.patch("/:id/review", async (req, res) => {
       .json({ error: "decision must be 'confirmed_match' or 'confirmed_new'" });
   }
 
+  const pendingRows = await db
+    .select()
+    .from(pendingRegistrationsTable)
+    .where(eq(pendingRegistrationsTable.verification_id, id))
+    .limit(1);
+
+  const pending = pendingRows[0] ?? null;
+  let confirmedChildId: number | null = null;
+
+  if (pending && pending.status === "needs_review" && decision === "confirmed_new") {
+    const [child] = await db
+      .insert(childrenTable)
+      .values({
+        first_name: pending.first_name,
+        surname: pending.surname,
+        guardian_name: pending.guardian_name,
+        date_of_birth: pending.date_of_birth,
+        lga: pending.lga,
+        village: pending.village,
+        visible_marks: pending.visible_marks,
+        gps_lat: pending.gps_lat,
+        gps_lng: pending.gps_lng,
+        face_photo: pending.face_photo,
+      })
+      .returning();
+
+    confirmedChildId = child.id;
+    await storePendingEmbeddings(child.id, pending.embeddings);
+
+    await db
+      .update(pendingRegistrationsTable)
+      .set({
+        status: "confirmed_new",
+        confirmed_child_id: child.id,
+        resolved_at: new Date(),
+      })
+      .where(eq(pendingRegistrationsTable.id, pending.id));
+  } else if (pending && pending.status === "needs_review" && decision === "confirmed_match") {
+    await db
+      .update(pendingRegistrationsTable)
+      .set({
+        status: "confirmed_match",
+        resolved_at: new Date(),
+      })
+      .where(eq(pendingRegistrationsTable.id, pending.id));
+  }
+
+  const verificationUpdate =
+    confirmedChildId === null
+      ? { review_status: decision }
+      : { review_status: decision, child_id: confirmedChildId };
+
   const rows = await db
     .update(verificationsTable)
-    .set({ review_status: decision })
+    .set(verificationUpdate)
     .where(eq(verificationsTable.id, id))
     .returning();
 
@@ -143,7 +237,7 @@ router.patch("/:id/review", async (req, res) => {
     ear_score: v.ear_score,
     fused_score: v.fused_score,
     review_status: v.review_status,
-    child: null,
+    child: v.child_id ? await loadChildRecord(v.child_id) : null,
   });
 });
 

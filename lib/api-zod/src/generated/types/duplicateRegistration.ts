@@ -5,9 +5,10 @@
  * Katsina State Child Verification Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { Child } from "./child";
 
-export interface ErrorResponse {
+export interface DuplicateRegistration {
   error: string;
-  /** @nullable */
-  error_code?: string | null;
+  matched_child?: Child | null;
+  confidence: number;
 }

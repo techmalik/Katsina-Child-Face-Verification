@@ -15,7 +15,7 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
- * Submit face and ear images to check if the child is already registered. Returns a result tier - match, new, or needs human review.
+ * Submit a face image to check if the child is already registered. Returns a result tier - match, new, or needs human review.
  * @summary Verify a child against the database
  */
 export const verifyChildBodyFaceImagesMax = 3;
@@ -25,7 +25,9 @@ export const VerifyChildBody = zod.object({
     .array(zod.string())
     .min(1)
     .max(verifyChildBodyFaceImagesMax)
-    .describe("Base64-encoded frontal face images (1-3 frames for embedding averaging)"),
+    .describe(
+      "Base64-encoded frontal face images (1-3 frames for embedding averaging)",
+    ),
   gps_lat: zod.number().nullish(),
   gps_lng: zod.number().nullish(),
 });
@@ -39,7 +41,7 @@ export const VerifyChildResponse = zod.object({
   confidence: zod
     .number()
     .nullish()
-    .describe("Fused match confidence score 0-1"),
+    .describe("Face match confidence score 0-1"),
   child: zod
     .union([
       zod.object({
@@ -119,7 +121,7 @@ export const ListChildrenResponse = zod.object({
 });
 
 /**
- * Register a new child with face and ear biometric images and personal information.
+ * Register a new child with face biometric images and personal information.
  * @summary Register a new child
  */
 
@@ -258,6 +260,7 @@ export const ListVerificationsResponse = zod.object({
  */
 export const GetReviewQueueResponseItem = zod.object({
   verification_id: zod.number(),
+  pending_registration_id: zod.number().nullish(),
   verified_at: zod.string(),
   gps_lat: zod.number().nullish(),
   gps_lng: zod.number().nullish(),

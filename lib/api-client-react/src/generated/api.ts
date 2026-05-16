@@ -21,11 +21,13 @@ import type {
   ChildInput,
   ChildPhotos,
   ChildrenList,
+  DuplicateRegistration,
   ErrorResponse,
   HealthStatus,
   LgaInfo,
   ListChildrenParams,
   ListVerificationsParams,
+  PendingRegistrationReview,
   ReviewDecision,
   ReviewQueueItem,
   Stats,
@@ -120,7 +122,7 @@ export function useHealthCheck<
 }
 
 /**
- * Submit face and ear images to check if the child is already registered. Returns a result tier - match, new, or needs human review.
+ * Submit a face image to check if the child is already registered. Returns a result tier - match, new, or needs human review.
  * @summary Verify a child against the database
  */
 export const getVerifyChildUrl = () => {
@@ -301,7 +303,7 @@ export function useListChildren<
 }
 
 /**
- * Register a new child with face and ear biometric images and personal information.
+ * Register a new child with face biometric images and personal information.
  * @summary Register a new child
  */
 export const getRegisterChildUrl = () => {
@@ -311,8 +313,8 @@ export const getRegisterChildUrl = () => {
 export const registerChild = async (
   childInput: ChildInput,
   options?: RequestInit,
-): Promise<Child> => {
-  return customFetch<Child>(getRegisterChildUrl(), {
+): Promise<Child | PendingRegistrationReview> => {
+  return customFetch<Child | PendingRegistrationReview>(getRegisterChildUrl(), {
     ...options,
     method: "POST",
     headers: { "Content-Type": "application/json", ...options?.headers },
@@ -321,7 +323,7 @@ export const registerChild = async (
 };
 
 export const getRegisterChildMutationOptions = <
-  TError = ErrorType<ErrorResponse>,
+  TError = ErrorType<ErrorResponse | DuplicateRegistration>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -362,13 +364,15 @@ export type RegisterChildMutationResult = NonNullable<
   Awaited<ReturnType<typeof registerChild>>
 >;
 export type RegisterChildMutationBody = BodyType<ChildInput>;
-export type RegisterChildMutationError = ErrorType<ErrorResponse>;
+export type RegisterChildMutationError = ErrorType<
+  ErrorResponse | DuplicateRegistration
+>;
 
 /**
  * @summary Register a new child
  */
 export const useRegisterChild = <
-  TError = ErrorType<ErrorResponse>,
+  TError = ErrorType<ErrorResponse | DuplicateRegistration>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<

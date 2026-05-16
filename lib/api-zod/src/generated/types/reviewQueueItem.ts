@@ -9,6 +9,8 @@ import type { Child } from "./child";
 
 export interface ReviewQueueItem {
   verification_id: number;
+  /** @nullable */
+  pending_registration_id?: number | null;
   verified_at: string;
   /** @nullable */
   gps_lat?: number | null;

@@ -120,12 +120,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Child"
+        "202":
+          description: Registration requires supervisor review before the child is created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingRegistrationReview"
         "400":
           description: Invalid input
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Likely duplicate registration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DuplicateRegistration"
 
   /children/{id}/photos:
     get:
@@ -306,6 +318,8 @@ components:
       properties:
         error:
           type: string
+        error_code:
+          type: ["string", "null"]
       required:
         - error
 
@@ -409,6 +423,43 @@ components:
         - children
         - total
 
+    DuplicateRegistration:
+      type: object
+      properties:
+        error:
+          type: string
+        matched_child:
+          oneOf:
+            - $ref: "#/components/schemas/Child"
+            - type: "null"
+        confidence:
+          type: number
+      required:
+        - error
+        - confidence
+
+    PendingRegistrationReview:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [needs_review]
+        pending_registration_id:
+          type: integer
+        verification_id:
+          type: integer
+        matched_child:
+          oneOf:
+            - $ref: "#/components/schemas/Child"
+            - type: "null"
+        confidence:
+          type: number
+      required:
+        - status
+        - pending_registration_id
+        - verification_id
+        - confidence
+
     VerificationInput:
       type: object
       properties:
@@ -495,6 +546,8 @@ components:
       properties:
         verification_id:
           type: integer
+        pending_registration_id:
+          type: ["integer", "null"]
         verified_at:
           type: string
         gps_lat:

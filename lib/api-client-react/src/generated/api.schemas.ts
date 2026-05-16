@@ -11,6 +11,8 @@ export interface HealthStatus {
 
 export interface ErrorResponse {
   error: string;
+  /** @nullable */
+  error_code?: string | null;
 }
 
 export interface Child {
@@ -33,7 +35,7 @@ export interface Child {
    */
   face_photo?: string | null;
   /**
-   * Base64-encoded ear thumbnail for display (legacy)
+   * Base64-encoded ear thumbnail for display
    * @nullable
    */
   ear_photo?: string | null;
@@ -71,6 +73,27 @@ export interface ChildInput {
 export interface ChildrenList {
   children: Child[];
   total: number;
+}
+
+export interface DuplicateRegistration {
+  error: string;
+  matched_child?: Child | null;
+  confidence: number;
+}
+
+export type PendingRegistrationReviewStatus =
+  (typeof PendingRegistrationReviewStatus)[keyof typeof PendingRegistrationReviewStatus];
+
+export const PendingRegistrationReviewStatus = {
+  needs_review: "needs_review",
+} as const;
+
+export interface PendingRegistrationReview {
+  status: PendingRegistrationReviewStatus;
+  pending_registration_id: number;
+  verification_id: number;
+  matched_child?: Child | null;
+  confidence: number;
 }
 
 export interface VerificationInput {
@@ -148,6 +171,8 @@ export interface VerificationList {
 
 export interface ReviewQueueItem {
   verification_id: number;
+  /** @nullable */
+  pending_registration_id?: number | null;
   verified_at: string;
   /** @nullable */
   gps_lat?: number | null;
@@ -197,7 +222,7 @@ export interface ChildPhotos {
    */
   face_photo: string | null;
   /**
-   * Base64-encoded ear thumbnail (legacy)
+   * Base64-encoded ear thumbnail
    * @nullable
    */
   ear_photo: string | null;
@@ -215,38 +240,6 @@ export type ListChildrenParams = {
    * Search by name
    */
   search?: string;
-  /**
-   * Filter by minimum date of birth (YYYY-MM-DD)
-   */
-  dob_from?: string;
-  /**
-   * Filter by maximum date of birth (YYYY-MM-DD)
-   */
-  dob_to?: string;
-  /**
-   * Filter by registration start date (YYYY-MM-DD)
-   */
-  registered_from?: string;
-  /**
-   * Filter by registration end date (YYYY-MM-DD)
-   */
-  registered_to?: string;
-  /**
-   * Filter by earliest last-verification date (YYYY-MM-DD)
-   */
-  verified_from?: string;
-  /**
-   * Filter by latest last-verification date (YYYY-MM-DD)
-   */
-  verified_to?: string;
-  /**
-   * Sort column: name | created_at | verification_count | lga | date_of_birth
-   */
-  sort_by?: string;
-  /**
-   * Sort direction: asc | desc
-   */
-  sort_dir?: string;
   /**
    * @maximum 200
    */

@@ -1,12 +1,9 @@
 import { Router } from "express";
-import { pool, db, childrenTable } from "@workspace/db";
+import { pool, db, childrenTable, pendingRegistrationsTable, verificationsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { getFaceServiceUrl } from "../lib/config";
+import { FaceMatchInputError, runFaceMatch, type AcceptedFaceFrame } from "../lib/face-matcher";
 
 const router = Router();
-const THRESHOLD_DUPLICATE = 0.38;
-const DET_THRESHOLD = 0.6;
-const LIVENESS_THRESHOLD = 0.5;
 
 const SORT_COLUMNS: Record<string, string> = {
   name: "(c.first_name || ' ' || c.surname)",
@@ -15,15 +12,6 @@ const SORT_COLUMNS: Record<string, string> = {
   lga: "c.lga",
   date_of_birth: "c.date_of_birth",
 };
-
-function vecStr(v: number[]): string {
-  return `[${v.join(",")}]`;
-}
-
-function l2normalize(v: number[]): number[] {
-  const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0));
-  return norm > 1e-8 ? v.map((x) => x / norm) : v;
-}
 
 router.get("/", async (req, res) => {
   const {
@@ -99,6 +87,41 @@ router.get("/", async (req, res) => {
   });
 });
 
+async function loadChildRecord(childId: number) {
+  const rows = await db
+    .select()
+    .from(childrenTable)
+    .where(eq(childrenTable.id, childId))
+    .limit(1);
+
+  if (!rows[0]) return null;
+
+  const vc = await pool.query<{ count: string }>(
+    "SELECT COUNT(*)::text FROM verifications WHERE child_id = $1",
+    [rows[0].id],
+  );
+
+  return {
+    ...rows[0],
+    created_at: rows[0].created_at.toISOString(),
+    verification_count: parseInt(vc.rows[0].count, 10),
+  };
+}
+
+function vecStr(v: number[]): string {
+  return `[${v.join(",")}]`;
+}
+
+async function storeChildEmbeddings(childId: number, frames: AcceptedFaceFrame[]) {
+  for (const frame of frames) {
+    await pool.query(
+      `INSERT INTO child_biometrics (child_id, photo_index, modality, embedding)
+       VALUES ($1, $2, 'face', $3::vector)`,
+      [childId, frame.photoIndex, vecStr(frame.embedding)],
+    );
+  }
+}
+
 router.post("/", async (req, res) => {
   const {
     first_name,
@@ -120,103 +143,78 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "At least one face image is required" });
   }
 
-  let embResult: {
-    face_embeddings: number[][];
-    face_detected: boolean[];
-    det_scores: number[];
-    liveness_scores: number[];
-  };
+  let match;
   try {
-    const resp = await fetch(`${getFaceServiceUrl()}/embed/batch`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ face_images }),
-      signal: AbortSignal.timeout(60_000),
-    });
-    if (!resp.ok) throw new Error(`Face service HTTP ${resp.status}`);
-    embResult = (await resp.json()) as typeof embResult;
-  } catch (err: any) {
-    return res.status(503).json({ error: `Face service unavailable: ${err.message}` });
-  }
-
-  const validFrames = embResult.face_detected
-    .map((detected, i) => ({
-      detected,
-      det: embResult.det_scores[i],
-      liveness: embResult.liveness_scores[i],
-      embedding: embResult.face_embeddings[i],
-    }))
-    .filter((f) => f.detected);
-
-  if (validFrames.length === 0) {
-    return res
-      .status(400)
-      .json({ error: "No face detected in the face photo. Please retake in good light." });
-  }
-
-  const passingDet = validFrames.filter((f) => f.det >= DET_THRESHOLD);
-  if (passingDet.length === 0) {
-    return res.status(400).json({
-      error: "Photo quality too low — move closer, ensure good lighting, and hold still.",
-      error_code: "quality_low",
-    });
-  }
-
-  const passingFrames = passingDet.filter((f) => f.liveness >= LIVENESS_THRESHOLD);
-  if (passingFrames.length === 0) {
-    return res.status(400).json({
-      error: "Live person required — please do not use a photograph.",
-      error_code: "liveness_failed",
-    });
-  }
-
-  const avgRaw = passingFrames[0].embedding.map((_, j) =>
-    passingFrames.reduce((s, f) => s + f.embedding[j], 0) / passingFrames.length,
-  );
-  const avgEmb = l2normalize(avgRaw);
-
-  const candidates = await pool.query<{
-    child_id: number;
-    face_dist: number;
-  }>(
-    `SELECT child_id, MIN(embedding <=> $1::vector) AS face_dist
-     FROM child_biometrics WHERE modality = 'face'
-     GROUP BY child_id ORDER BY face_dist ASC LIMIT 1`,
-    [vecStr(avgEmb)],
-  );
-
-  const best = candidates.rows[0] ?? null;
-  if (best) {
-    const faceSim = Math.max(0, 1 - best.face_dist);
-
-    if (faceSim >= THRESHOLD_DUPLICATE) {
-      const rows = await db
-        .select()
-        .from(childrenTable)
-        .where(eq(childrenTable.id, best.child_id))
-        .limit(1);
-      let matchedChild = null;
-      if (rows[0]) {
-        const vc = await pool.query<{ count: string }>(
-          "SELECT COUNT(*)::text FROM verifications WHERE child_id = $1",
-          [rows[0].id],
-        );
-        matchedChild = {
-          ...rows[0],
-          created_at: rows[0].created_at.toISOString(),
-          verification_count: parseInt(vc.rows[0].count, 10),
-        };
-      }
-      return res.status(409).json({
-        error: "Likely duplicate registration detected",
-        matched_child: matchedChild,
-        confidence: faceSim,
+    match = await runFaceMatch(face_images, "register");
+  } catch (error) {
+    if (error instanceof FaceMatchInputError) {
+      return res.status(error.status).json({
+        error: error.message,
+        error_code: error.errorCode,
       });
     }
+    throw error;
+  }
+
+  const best = match.candidate;
+  if (match.decision === "match" && best) {
+    return res.status(409).json({
+      error: "Likely duplicate registration detected",
+      matched_child: await loadChildRecord(best.childId),
+      confidence: best.score,
+    });
   }
 
   const facePhoto =
     face_images[0] && face_images[0].length < 300_000 ? face_images[0] : null;
+
+  if (match.decision === "review" && best) {
+    const [verif] = await db
+      .insert(verificationsTable)
+      .values({
+        child_id: best.childId,
+        face_score: best.score,
+        ear_score: null,
+        fused_score: best.score,
+        review_status: "needs_review",
+        capture_photo: facePhoto,
+        gps_lat: gps_lat ?? null,
+        gps_lng: gps_lng ?? null,
+      })
+      .returning();
+
+    const [pending] = await db
+      .insert(pendingRegistrationsTable)
+      .values({
+        verification_id: verif.id,
+        candidate_child_id: best.childId,
+        first_name,
+        surname,
+        guardian_name,
+        date_of_birth,
+        lga,
+        village,
+        visible_marks: visible_marks ?? null,
+        gps_lat: gps_lat ?? null,
+        gps_lng: gps_lng ?? null,
+        face_photo: facePhoto,
+        embeddings: match.acceptedFrames.map((frame) => ({
+          photo_index: frame.photoIndex,
+          embedding: frame.embedding,
+          det_score: frame.detScore,
+        })),
+        confidence: best.score,
+      })
+      .returning();
+
+    return res.status(202).json({
+      status: "needs_review",
+      pending_registration_id: pending.id,
+      verification_id: verif.id,
+      matched_child: await loadChildRecord(best.childId),
+      confidence: best.score,
+    });
+  }
 
   const [child] = await db
     .insert(childrenTable)
@@ -234,11 +232,7 @@ router.post("/", async (req, res) => {
     })
     .returning();
 
-  await pool.query(
-    `INSERT INTO child_biometrics (child_id, photo_index, modality, embedding)
-     VALUES ($1, $2, 'face', $3::vector)`,
-    [child.id, 0, vecStr(avgEmb)],
-  );
+  await storeChildEmbeddings(child.id, match.acceptedFrames);
 
   return res.status(201).json({
     ...child,

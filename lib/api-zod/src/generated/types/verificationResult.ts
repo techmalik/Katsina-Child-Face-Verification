@@ -12,7 +12,7 @@ export interface VerificationResult {
   /** new = first visit, match = already verified, review = needs supervisor */
   status: VerificationResultStatus;
   /**
-   * Fused match confidence score 0-1
+   * Face match confidence score 0-1
    * @nullable
    */
   confidence?: number | null;

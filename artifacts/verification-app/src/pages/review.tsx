@@ -65,7 +65,7 @@ export function Review() {
                 </div>
                 
                 <CardContent className="p-6">
-                  <div className="grid grid-cols-3 gap-4 mb-8">
+                  <div className="grid grid-cols-2 gap-4 mb-8">
                     {/* Captured Image */}
                     <div className="space-y-2">
                       <h4 className="text-center font-bold text-sm text-gray-500 uppercase tracking-wider">New Capture</h4>
@@ -94,19 +94,6 @@ export function Review() {
                       </div>
                     </div>
 
-                    {/* DB Record – ear */}
-                    <div className="space-y-2">
-                      <h4 className="text-center font-bold text-sm text-gray-500 uppercase tracking-wider">DB Ear</h4>
-                      <div className="aspect-square bg-gray-200 rounded-xl overflow-hidden border-2 relative">
-                        {item.candidate_child?.ear_photo ? (
-                          <img src={item.candidate_child.ear_photo} alt="Database ear" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <User className="w-16 h-16 text-gray-400" />
-                          </div>
-                        )}
-                      </div>
-                    </div>
                   </div>
 
                   {item.candidate_child && (
@@ -126,7 +113,9 @@ export function Review() {
                       disabled={submitReview.isPending}
                     >
                       <Check className="mr-2 h-5 w-5" /> Not a Match
-                      <span className="block text-xs font-normal ml-2 opacity-80">(Register New)</span>
+                      <span className="block text-xs font-normal ml-2 opacity-80">
+                        {item.pending_registration_id ? "(Create Child)" : "(Clear)"}
+                      </span>
                     </Button>
                     <Button 
                       size="lg" 
